@@ -2,7 +2,6 @@
 UI Package Initialization.
 """
 
-from jarvis.ui.app import DesktopApp, run_ui
-from jarvis.ui.overlay import HUDOverlay
+from jarvis.ui.app import JarvisOSGUI, launch_gui
 
-__all__ = ["DesktopApp", "run_ui", "HUDOverlay"]
+__all__ = ["JarvisOSGUI", "launch_gui"]
