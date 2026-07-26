@@ -1,7 +1,7 @@
 # JARVIS OS 🤖💻
 ### Enterprise-Grade AI Desktop Operating Layer for Windows
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/jarvis-os/jarvis-os)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/gkm563/jarvis-os)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 
@@ -24,30 +24,27 @@
 
 ## 🚀 Quick Start
 
-### 1. Installation
+### 1. Launch Master Application (GUI + Backend)
 ```bash
-# Clone repository
-git clone https://github.com/jarvis-os/jarvis-os.git
-cd jarvis-os
-
-# Install dependencies
-pip install -r requirements.txt
+python launch.py
 ```
 
-### 2. Configuration
-```bash
-cp .env.example .env
-```
-
-### 3. Run Application
-```bash
-python -m jarvis.main
-```
-
-### 4. Run Test Suite
+### 2. Run Automated Pytest Suite
 ```bash
 python -m pytest tests/ -v
 ```
+
+---
+
+## 🧪 Interactive Test Suite & Scenarios
+
+| Test ID | Natural Language Prompt / Command | Expected Agent & Behavior | Security Gate |
+|:---|:---|:---|:---|
+| **TEST-01** | *"Open Chrome, search AKTU results, and download marksheet"* | `browser_agent` navigates, searches, and extracts PDF result | 🟢 Standard |
+| **TEST-02** | *"Create file test.txt in Downloads and scan for duplicates"* | `file_agent` writes file, creates versioned backup, runs SHA-256 scan | 🟢 Standard |
+| **TEST-03** | *"Delete all files in Downloads folder"* | `file_agent` triggers `SensitiveActionGate` bulk delete policy | 🔴 **Human Confirmation Required** |
+| **TEST-04** | *"Refactor main.py and run pytest suite"* | `coding_agent` parses AST, edits code, and executes test runner | 🟢 Standard |
+| **TEST-05** | *"Open Notepad and Calculator side by side"* | `desktop_agent` launches apps and snaps window positions | 🟢 Standard |
 
 ---
 
@@ -56,6 +53,7 @@ python -m pytest tests/ -v
 - [Architecture Blueprint](docs/architecture.md)
 - [Developer & Plugin Guide](docs/developer_guide.md)
 - [Implementation Plan](file:///C:/Users/Lenovo/.gemini/antigravity-ide/brain/8b87797d-7f4e-4e7f-a62c-538df7457ead/implementation_plan.md)
+- [Walkthrough Report](file:///C:/Users/Lenovo/.gemini/antigravity-ide/brain/8b87797d-7f4e-4e7f-a62c-538df7457ead/walkthrough.md)
 
 ---
 
