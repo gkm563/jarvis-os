@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jarvis-os"
+version = "1.0.0"
+description = "Enterprise-Grade AI Desktop Operating Layer for Windows"
+readme = "README.md"
+authors = [
+    { name = "Gautam Kumar Maurya", email = "author@jarvis-os.org" }
+]
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "fastapi>=0.109.0",
+    "uvicorn>=0.27.0",
+    "loguru>=0.7.2",
+    "cryptography>=42.0.0"
+]
+
+[project.scripts]
+jarvis = "jarvis.main:main"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]

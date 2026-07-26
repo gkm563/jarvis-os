@@ -1,0 +1,36 @@
+# JARVIS OS Security Policy Configuration
+
+sensitive_action_classes:
+  - banking_transaction
+  - payment
+  - password_change
+  - credential_update
+  - mass_file_deletion
+  - system_shutdown
+  - system_restart
+  - code_push_production
+
+permissions:
+  default_scope: read_only
+  allowed_agents:
+    desktop_agent:
+      - launch_app
+      - focus_window
+      - system_state
+    browser_agent:
+      - navigate
+      - fill_form
+      - download_file
+    file_agent:
+      - read_file
+      - write_file
+      - delete_file
+    coding_agent:
+      - read_code
+      - edit_code
+      - run_test
+      - git_commit
+
+confirmation_rules:
+  require_biometric_or_interactive_token: true
+  token_ttl_seconds: 300

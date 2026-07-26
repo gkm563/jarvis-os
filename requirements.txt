@@ -1,0 +1,44 @@
+# Core & Async Framework
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+httpx>=0.26.0
+websockets>=12.0
+
+# Security & Encryption
+cryptography>=42.0.0
+pyjwt>=2.8.0
+
+# Database & Memory
+sqlalchemy>=2.0.25
+alembic>=1.13.1
+chromadb>=0.4.22
+
+# AI & LLM Providers
+openai>=1.12.0
+google-generativeai>=0.3.2
+anthropic>=0.17.0
+langgraph>=0.0.20
+
+# Automation & OS Integration
+pywinauto>=0.6.8
+pyautogui>=0.9.54
+playwright>=1.41.0
+opencv-python>=4.9.0.80
+pillow>=10.2.0
+pytesseract>=0.3.10
+
+# Speech & Voice
+edge-tts>=6.1.9
+piper-tts>=1.2.0
+
+# Logging & Monitoring
+loguru>=0.7.2
+opentelemetry-api>=1.22.0
+
+# Developer Tools & Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.5
+black>=24.1.0
+mypy>=1.8.0
