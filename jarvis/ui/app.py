@@ -9,16 +9,18 @@ import os
 import asyncio
 import threading
 import time
-from typing import Optional, List, Dict, Any
+from typing import Optional
 
 import customtkinter as ctk
-from PIL import Image, ImageTk
 
-from jarvis.brain.planner import TaskPlanner
+# Register all agents before GUI starts
+import jarvis.agents as agents_module
+from jarvis.agents import agent_registry
+
+from jarvis.brain.planner import Planner
 from jarvis.orchestration.executor import ExecutionManager
 from jarvis.core.models import Plan, Step, StepStatus, PlanStatus, AgentAction
-from jarvis.security import sensitive_gate, vault, anomaly_monitor
-from jarvis.agents import agent_registry
+from jarvis.security import sensitive_gate
 from jarvis.utils.logger import get_logger
 
 logger = get_logger("JarvisGUI")
@@ -40,7 +42,7 @@ class JarvisOSGUI(ctk.CTk):
         self.minsize(900, 600)
 
         # Core Engines
-        self.planner = TaskPlanner()
+        self.planner = Planner()
         self.executor = ExecutionManager()
         self.current_plan: Optional[Plan] = None
         self.loop = asyncio.new_event_loop()
@@ -66,7 +68,6 @@ class JarvisOSGUI(ctk.CTk):
         self.sidebar = ctk.CTkFrame(self, width=220, corner_radius=0)
         self.sidebar.pack(side="left", fill="y", padx=0, pady=0)
 
-        # Title Logo
         logo_label = ctk.CTkLabel(
             self.sidebar,
             text="🤖 JARVIS OS",
@@ -83,7 +84,6 @@ class JarvisOSGUI(ctk.CTk):
         )
         subtitle.pack(padx=20, pady=(0, 20))
 
-        # Status Indicator Badge
         self.status_badge = ctk.CTkButton(
             self.sidebar,
             text="🟢 SYSTEM ONLINE",
@@ -94,20 +94,19 @@ class JarvisOSGUI(ctk.CTk):
         )
         self.status_badge.pack(padx=20, pady=(0, 20), fill="x")
 
-        # Agent Ecosystem Label
+        agent_count = len(agent_registry._agents)
         agent_label = ctk.CTkLabel(
             self.sidebar,
-            text="SPECIALIZED AGENTS (20)",
+            text=f"SPECIALIZED AGENTS ({agent_count})",
             font=ctk.CTkFont(size=12, weight="bold"),
             anchor="w",
         )
         agent_label.pack(padx=20, pady=(10, 5), fill="x")
 
-        # Agent Scrollable Frame
         self.agent_frame = ctk.CTkScrollableFrame(self.sidebar, height=350)
         self.agent_frame.pack(padx=15, pady=5, fill="both", expand=True)
 
-        for name, agent in agent_registry._agents.items():
+        for name in agent_registry._agents.keys():
             card = ctk.CTkFrame(self.agent_frame, fg_color="#1E293B", corner_radius=6)
             card.pack(fill="x", padx=2, pady=3)
             lbl = ctk.CTkLabel(
@@ -193,6 +192,7 @@ class JarvisOSGUI(ctk.CTk):
         self.log_text = ctk.CTkTextbox(self.tab_logs, font=ctk.CTkFont(family="Consolas", size=12))
         self.log_text.pack(fill="both", expand=True, padx=5, pady=5)
         self._append_log("JARVIS OS Kernel initialized. Ready for user commands.")
+        self._append_log(f"Registered {len(agent_registry._agents)} domain agents.")
 
     def _create_footer(self):
         """Footer bar displaying operational security policy."""
@@ -213,17 +213,24 @@ class JarvisOSGUI(ctk.CTk):
         self.log_text.see("end")
 
     def _on_voice_click(self):
-        self._append_log("🎙️ Voice Assistant triggered: 'Hey Jarvis'")
+        """Triggers voice input simulation."""
+        self._append_log("🎙️ Voice input triggered...")
+        try:
+            import win32com.client
+            speaker = win32com.client.Dispatch("SAPI.SpVoice")
+            speaker.Speak("Yes, I am listening. Please type your command.")
+        except Exception:
+            pass
         self.prompt_entry.delete(0, "end")
-        self.prompt_entry.insert(0, "Open Chrome, search AKTU results, and download marksheet")
-        self._on_execute_click()
+        self.prompt_entry.insert(0, "Open Chrome and search AKTU results 2026")
+        self.prompt_entry.focus()
 
     def _on_execute_click(self):
         user_prompt = self.prompt_entry.get().strip()
         if not user_prompt:
             return
 
-        self._append_log(f"Received instruction: '{user_prompt}'")
+        self._append_log(f"📝 Received instruction: '{user_prompt}'")
         self.exec_btn.configure(state="disabled", text="⏳ Planning...")
 
         # Clear DAG step display
@@ -235,20 +242,21 @@ class JarvisOSGUI(ctk.CTk):
 
     async def _process_plan_async(self, goal: str):
         try:
+            self.after(0, lambda: self._append_log("🧠 AI Planner decomposing goal into tasks..."))
             plan = await self.planner.create_plan(goal)
             self.current_plan = plan
 
-            # Update UI on main thread
             self.after(0, self._render_plan_steps, plan)
-            self.after(0, lambda: self._append_log(f"DAG Plan generated with {len(plan.steps)} steps"))
+            self.after(0, lambda: self._append_log(f"✅ DAG Plan generated: {len(plan.steps)} step(s)"))
 
             # Execute Plan
+            self.after(0, lambda: self._append_log("⚙️ Executing plan steps..."))
             await self.executor.execute_plan(plan)
             self.after(0, self._on_plan_completed, plan)
 
         except Exception as e:
             logger.error(f"Plan execution failed: {str(e)}")
-            self.after(0, lambda: self._append_log(f"ERROR: {str(e)}"))
+            self.after(0, lambda: self._append_log(f"❌ ERROR: {str(e)}"))
             self.after(0, lambda: self.exec_btn.configure(state="normal", text="🚀 Run Workflow"))
 
     def _render_plan_steps(self, plan: Plan):
@@ -267,9 +275,8 @@ class JarvisOSGUI(ctk.CTk):
             )
             title.pack(side="left")
 
-            status_color = "#3B82F6"
-            if step.action.is_sensitive:
-                status_color = "#EF4444"
+            is_sensitive = getattr(step.action, "is_sensitive", False)
+            status_color = "#EF4444" if is_sensitive else "#3B82F6"
 
             badge = ctk.CTkLabel(
                 header,
@@ -279,10 +286,9 @@ class JarvisOSGUI(ctk.CTk):
             )
             badge.pack(side="right")
 
-            # Check if human approval confirmation is needed
-            if step.action.is_sensitive:
+            if is_sensitive:
                 token = sensitive_gate.create_confirmation_request(step)
-                self._show_approval_dialog(step, token)
+                self.after(0, lambda s=step, t=token: self._show_approval_dialog(s, t))
 
     def _show_approval_dialog(self, step: Step, token: str):
         """Displays human confirmation dialog for sensitive actions."""
@@ -312,26 +318,27 @@ class JarvisOSGUI(ctk.CTk):
 
         def approve():
             sensitive_gate.confirm_action(token)
-            self._append_log(f"APPROVED sensitive token for step '{step.step_id}'")
+            self._append_log(f"✅ APPROVED sensitive token for step '{step.step_id}'")
             dialog.destroy()
 
         def reject():
             dialog.destroy()
-            self._append_log(f"REJECTED sensitive action for step '{step.step_id}'")
+            self._append_log(f"🚫 REJECTED sensitive action for step '{step.step_id}'")
 
-        approve_btn = ctk.CTkButton(
-            btn_frame, text="✅ Approve & Execute", fg_color="#166534", hover_color="#15803D", command=approve
-        )
-        approve_btn.pack(side="left", padx=10)
-
-        reject_btn = ctk.CTkButton(
-            btn_frame, text="❌ Deny Action", fg_color="#991B1B", hover_color="#7F1D1D", command=reject
-        )
-        reject_btn.pack(side="right", padx=10)
+        ctk.CTkButton(btn_frame, text="✅ Approve & Execute", fg_color="#166534", hover_color="#15803D", command=approve).pack(side="left", padx=10)
+        ctk.CTkButton(btn_frame, text="❌ Deny Action", fg_color="#991B1B", hover_color="#7F1D1D", command=reject).pack(side="right", padx=10)
 
     def _on_plan_completed(self, plan: Plan):
         self.exec_btn.configure(state="normal", text="🚀 Run Workflow")
-        self._append_log(f"Plan '{plan.plan_id}' execution completed with status: {plan.status.value.upper()}")
+        status = plan.status.value.upper()
+        self._append_log(f"🏁 Plan completed with status: {status}")
+        # Speak result aloud
+        try:
+            import win32com.client
+            speaker = win32com.client.Dispatch("SAPI.SpVoice")
+            speaker.Speak(f"Task completed. Status: {status}")
+        except Exception:
+            pass
 
 
 def launch_gui():
