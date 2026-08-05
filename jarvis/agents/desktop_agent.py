@@ -69,18 +69,24 @@ class DesktopControlAgent(AbstractAgent):
 
     async def _launch_app(self, app_name: str) -> ExecutionResult:
         """Launches a Windows application by name or executable path."""
+        import webbrowser
         logger.info(f"Launching desktop application: '{app_name}'")
         try:
+            app_clean = app_name.lower().strip()
+            if app_clean in ["chrome", "google chrome", "browser"]:
+                webbrowser.open("https://www.google.com")
+                return ExecutionResult(success=True, data={"app_name": app_name, "status": "launched"})
+
             # Common Windows app mapping
             app_map = {
-                "notepad": "notepad.exe",
-                "calculator": "calc.exe",
-                "cmd": "cmd.exe",
-                "powershell": "powershell.exe",
-                "chrome": "chrome.exe",
+                "notepad": "notepad",
+                "calculator": "calc",
+                "calc": "calc",
+                "cmd": "cmd",
+                "powershell": "powershell",
             }
-            exe = app_map.get(app_name.lower(), app_name)
-            subprocess.Popen(exe, shell=True)
+            exe = app_map.get(app_clean, app_name)
+            subprocess.Popen(f"start {exe}", shell=True)
             return ExecutionResult(success=True, data={"app_name": app_name, "status": "launched"})
         except Exception as e:
             return ExecutionResult(success=False, error_message=f"Failed to launch '{app_name}': {str(e)}")

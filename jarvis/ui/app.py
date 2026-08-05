@@ -18,7 +18,7 @@ from jarvis.brain.planner import TaskPlanner
 from jarvis.orchestration.executor import ExecutionManager
 from jarvis.core.models import Plan, Step, StepStatus, PlanStatus, AgentAction
 from jarvis.security import sensitive_gate, vault, anomaly_monitor
-from jarvis.orchestration.executor import agent_registry
+from jarvis.agents import agent_registry
 from jarvis.utils.logger import get_logger
 
 logger = get_logger("JarvisGUI")

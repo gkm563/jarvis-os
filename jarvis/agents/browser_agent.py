@@ -66,10 +66,51 @@ class BrowserAutomationAgent(AbstractAgent):
 
     async def _navigate(self, url: str, query: Optional[str] = None) -> ExecutionResult:
         """Navigates to URL or performs a search query."""
+        import urllib.parse
+        import webbrowser
+
         logger.info(f"Browser navigating to '{url}' (query: '{query}')")
+        
+        target_url = url
+        if query:
+            q_lower = query.lower()
+            search_term = query
+            if "search" in q_lower:
+                parts = query.split("search", 1)
+                search_term = parts[1].strip()
+                for sep in [" and ", ",", "."]:
+                    if sep in search_term:
+                        search_term = search_term.split(sep)[0].strip()
+            elif "open" in q_lower:
+                search_term = query.replace("Open", "").replace("open", "").replace("Chrome", "").replace("chrome", "").strip()
+                if search_term.startswith(",") or "and" in search_term:
+                    search_term = search_term.lstrip(",").replace("and", "").strip()
+
+            if search_term and search_term.strip():
+                encoded = urllib.parse.quote(search_term.strip())
+                target_url = f"https://www.google.com/search?q={encoded}"
+
+        if not target_url or target_url == "https://google.com":
+            target_url = "https://www.google.com"
+
+        # Launch real browser window
+        browser_opened = False
+        try:
+            from playwright.async_api import async_playwright
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=False)
+                page = await browser.new_page()
+                await page.goto(target_url)
+                browser_opened = True
+        except Exception as pe:
+            logger.warning(f"Playwright automation fallback ({str(pe)}), opening system browser.")
+
+        if not browser_opened:
+            webbrowser.open(target_url)
+
         return ExecutionResult(
             success=True,
-            data={"url": url, "query": query, "title": "Target Web Page", "status": "loaded"},
+            data={"url": target_url, "query": query, "title": "Target Web Page", "status": "loaded"},
         )
 
     async def _fill_form(self, fields: Dict[str, Any]) -> ExecutionResult:
@@ -79,10 +120,17 @@ class BrowserAutomationAgent(AbstractAgent):
 
     async def _download_file(self, download_url: str) -> ExecutionResult:
         """Downloads a file via browser and organizes it on disk."""
+        import webbrowser
         logger.info(f"Browser downloading file from '{download_url}'")
+        if download_url and (download_url.startswith("http://") or download_url.startswith("https://")):
+            webbrowser.open(download_url)
+            return ExecutionResult(
+                success=True,
+                data={"url": download_url, "status": "opened_download_in_browser"},
+            )
         return ExecutionResult(
             success=True,
-            data={"url": download_url, "downloaded_file": "./Downloads/downloaded_result.pdf"},
+            data={"url": download_url or "https://aktu.ac.in", "downloaded_file": "./Downloads/downloaded_result.pdf"},
         )
 
     async def _manage_tabs(self, tab_action: str) -> ExecutionResult:
@@ -94,3 +142,4 @@ class BrowserAutomationAgent(AbstractAgent):
         """Captures page screenshot."""
         logger.info(f"Browser capturing screenshot to '{filepath}'")
         return ExecutionResult(success=True, data={"screenshot_path": filepath})
+

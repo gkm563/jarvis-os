@@ -9,36 +9,36 @@ from jarvis.agents.browser_agent import BrowserAutomationAgent
 from jarvis.agents.coding_agent import AICodingAgent
 from jarvis.agents.vision_agent import VisionAgent
 from jarvis.agents.voice_agent import VoiceAssistantAgent
+from jarvis.agents.email_agent import EmailAgent
+from jarvis.agents.office_agent import OfficeAgent
+from jarvis.agents.developer_agent import DeveloperAgent
+from jarvis.agents.database_agent import DatabaseAgent
+from jarvis.agents.scheduler_agent import SchedulerAgent
+from jarvis.agents.research_agent import InternetResearchAgent
 from jarvis.agents.stubs.stubs import (
-    EmailAgent,
-    OfficeAgent,
-    DeveloperAgent,
-    DatabaseAgent,
-    SchedulerAgent,
     WhatsAppAgent,
     TelegramAgent,
-    InternetResearchAgent,
     SecuritySystemAgent,
 )
 from jarvis.orchestration.executor import agent_registry
 
-# Instantiate Primary Phase-1 Agents
+# Instantiate Domain Agents
 desktop_agent = DesktopControlAgent()
 file_agent = FileSystemAgent()
 browser_agent = BrowserAutomationAgent()
 coding_agent = AICodingAgent()
 vision_agent = VisionAgent()
 voice_agent = VoiceAssistantAgent()
-
-# Instantiate Phase 2-4 Agents
 email_agent = EmailAgent()
 office_agent = OfficeAgent()
 developer_agent = DeveloperAgent()
 database_agent = DatabaseAgent()
 scheduler_agent = SchedulerAgent()
+research_agent = InternetResearchAgent()
+
+# Instantiate Remaining Phase 2-4 Stubs
 whatsapp_agent = WhatsAppAgent()
 telegram_agent = TelegramAgent()
-research_agent = InternetResearchAgent()
 security_agent = SecuritySystemAgent()
 
 # Register all agents into Central Agent Registry
@@ -54,9 +54,9 @@ for agent in [
     developer_agent,
     database_agent,
     scheduler_agent,
+    research_agent,
     whatsapp_agent,
     telegram_agent,
-    research_agent,
     security_agent,
 ]:
     agent_registry.register(agent)
@@ -73,8 +73,8 @@ __all__ = [
     "developer_agent",
     "database_agent",
     "scheduler_agent",
+    "research_agent",
     "whatsapp_agent",
     "telegram_agent",
-    "research_agent",
     "security_agent",
 ]
