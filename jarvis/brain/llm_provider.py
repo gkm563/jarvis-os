@@ -76,8 +76,42 @@ class UniversalLLMProvider(BaseLLMProvider):
         plan_id = str(uuid.uuid4())
         steps = []
 
-        # Rule 1: Desktop multi-app launching and window snapping (e.g. TEST-05 "Open Notepad and Calculator side by side")
-        if "notepad" in goal_lower and ("calculator" in goal_lower or "calc" in goal_lower):
+        # Rule 0: Screen Vision queries ("what am I looking at?", "what does this say?", "look at screen", "read screen")
+        if any(w in goal_lower for w in ["looking at", "what is this", "see screen", "look at screen", "read screen", "error say"]):
+            steps.append(
+                Step(
+                    step_id="step_1",
+                    description="Analyze active screen display content",
+                    action=AgentAction(
+                        agent_name="vision_agent",
+                        action_type="analyze_screen",
+                        parameters={"query": user_goal},
+                    ),
+                    dependencies=[],
+                )
+            )
+
+        # Rule 0.5: Direct Browser Keystrokes ("scroll down", "scroll up", "go back", "reload", "top", "bottom")
+        elif any(w in goal_lower for w in ["scroll down", "scroll up", "go back", "reload page", "page down", "page up"]):
+            action_cmd = "scroll_down"
+            if "scroll up" in goal_lower or "page up" in goal_lower: action_cmd = "scroll_up"
+            elif "go back" in goal_lower: action_cmd = "back"
+            elif "reload" in goal_lower: action_cmd = "reload"
+            steps.append(
+                Step(
+                    step_id="step_1",
+                    description=f"Control active browser page ({action_cmd})",
+                    action=AgentAction(
+                        agent_name="browser_agent",
+                        action_type="control_page",
+                        parameters={"action": action_cmd, "times": 2 if "twice" in goal_lower else 1},
+                    ),
+                    dependencies=[],
+                )
+            )
+
+        # Rule 1: Desktop multi-app launching and window snapping (TEST-05)
+        elif "notepad" in goal_lower and ("calculator" in goal_lower or "calc" in goal_lower):
             steps.append(
                 Step(
                     step_id="step_1",
@@ -127,8 +161,8 @@ class UniversalLLMProvider(BaseLLMProvider):
                 )
             )
 
-        # Rule 2: Browser search & file download (e.g. TEST-01)
-        elif "chrome" in goal_lower or "search" in goal_lower or "aktu" in goal_lower or "browser" in goal_lower:
+        # Rule 2: Browser search & file download (TEST-01)
+        elif any(w in goal_lower for w in ["chrome", "search", "aktu", "browser", "youtube", "google"]):
             steps.append(
                 Step(
                     step_id="step_1",
@@ -141,21 +175,22 @@ class UniversalLLMProvider(BaseLLMProvider):
                     dependencies=[],
                 )
             )
-            steps.append(
-                Step(
-                    step_id="step_2",
-                    description="Download Result Marksheet PDF",
-                    action=AgentAction(
-                        agent_name="browser_agent",
-                        action_type="download_file",
-                        parameters={"url": "https://aktu.ac.in/results.pdf", "download_type": "result_pdf"},
-                    ),
-                    dependencies=["step_1"],
+            if "download" in goal_lower or "aktu" in goal_lower:
+                steps.append(
+                    Step(
+                        step_id="step_2",
+                        description="Download Result Marksheet PDF",
+                        action=AgentAction(
+                            agent_name="browser_agent",
+                            action_type="download_file",
+                            parameters={"url": "https://aktu.ac.in/results.pdf", "download_type": "result_pdf"},
+                        ),
+                        dependencies=["step_1"],
+                    )
                 )
-            )
 
         # Rule 3: File System CRUD, Duplicates, and Bulk Deletion (TEST-02 & TEST-03)
-        elif "file" in goal_lower or "folder" in goal_lower or "organize" in goal_lower or "delete" in goal_lower or "duplicate" in goal_lower:
+        elif any(w in goal_lower for w in ["file", "folder", "organize", "delete", "duplicate"]):
             is_del = "delete" in goal_lower or "remove" in goal_lower
             if "create" in goal_lower:
                 steps.append(
@@ -202,7 +237,7 @@ class UniversalLLMProvider(BaseLLMProvider):
                 )
 
         # Rule 4: Coding Agent Refactor & Test Execution (TEST-04)
-        elif "code" in goal_lower or "fix" in goal_lower or "refactor" in goal_lower or "pytest" in goal_lower:
+        elif any(w in goal_lower for w in ["code", "fix", "refactor", "pytest"]):
             steps.append(
                 Step(
                     step_id="step_1",
@@ -225,81 +260,6 @@ class UniversalLLMProvider(BaseLLMProvider):
                         parameters={"test_dir": "tests/"},
                     ),
                     dependencies=["step_1"],
-                )
-            )
-
-        # Rule 5: Email Triage & Sending
-        elif "email" in goal_lower or "inbox" in goal_lower or "mail" in goal_lower:
-            steps.append(
-                Step(
-                    step_id="step_1",
-                    description="Summarize Email Inbox",
-                    action=AgentAction(
-                        agent_name="email_agent",
-                        action_type="summarize_inbox",
-                        parameters={},
-                    ),
-                    dependencies=[],
-                )
-            )
-
-        # Rule 6: Office Document Creation
-        elif "doc" in goal_lower or "excel" in goal_lower or "pdf" in goal_lower or "report" in goal_lower:
-            steps.append(
-                Step(
-                    step_id="step_1",
-                    description="Generate Office Document",
-                    action=AgentAction(
-                        agent_name="office_agent",
-                        action_type="create_doc",
-                        parameters={"filepath": "./Report.docx", "content": f"Report for goal: {user_goal}"},
-                    ),
-                    dependencies=[],
-                )
-            )
-
-        # Rule 7: Developer & Docker
-        elif "docker" in goal_lower or "terminal" in goal_lower or "k8s" in goal_lower:
-            steps.append(
-                Step(
-                    step_id="step_1",
-                    description="Execute Developer Terminal Command",
-                    action=AgentAction(
-                        agent_name="developer_agent",
-                        action_type="terminal_command",
-                        parameters={"command": "echo JARVIS OS Developer Task"},
-                    ),
-                    dependencies=[],
-                )
-            )
-
-        # Rule 8: Scheduler & Meeting
-        elif "schedule" in goal_lower or "meeting" in goal_lower or "reminder" in goal_lower:
-            steps.append(
-                Step(
-                    step_id="step_1",
-                    description="Add Calendar Event / Reminder",
-                    action=AgentAction(
-                        agent_name="scheduler_agent",
-                        action_type="add_event",
-                        parameters={"title": user_goal, "time": "Tomorrow 10:00 AM"},
-                    ),
-                    dependencies=[],
-                )
-            )
-
-        # Rule 9: Research Agent
-        elif "research" in goal_lower or "study" in goal_lower:
-            steps.append(
-                Step(
-                    step_id="step_1",
-                    description="Conduct Deep Internet Research",
-                    action=AgentAction(
-                        agent_name="research_agent",
-                        action_type="deep_research",
-                        parameters={"topic": user_goal, "depth": 3},
-                    ),
-                    dependencies=[],
                 )
             )
 

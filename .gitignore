@@ -61,5 +61,7 @@ logs/
 *.swp
 *.swo
 
-# Extracted temporary files
+# Extracted temporary files & cloned references
 PRD_extracted.txt
+bruno_clone/
+*.txt

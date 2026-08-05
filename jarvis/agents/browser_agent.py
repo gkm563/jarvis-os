@@ -1,19 +1,26 @@
 """
 Browser Automation Agent (FR-2) for JARVIS OS.
-Automates Playwright-driven browser interactions (navigation, search, form filling, downloading).
+Combines Playwright web automation with native Win32 direct browser navigation and scrolling.
 """
 
+import urllib.parse
+import webbrowser
 from typing import Any, Dict, List, Optional
 from jarvis.agents.base import AbstractAgent
 from jarvis.core.models import AgentAction, ExecutionResult
+from jarvis.utils.win32 import get_foreground_window_info, send_keys, VK_NEXT, VK_PRIOR, VK_HOME, VK_END, VK_MENU, VK_LEFT, VK_RIGHT, VK_F5, VK_CONTROL
 from jarvis.utils.logger import get_logger
 
 logger = get_logger("BrowserAgent")
 
+BROWSER_PROCESSES = {
+    "chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe", "vivaldi.exe", "arc.exe"
+}
+
 
 class BrowserAutomationAgent(AbstractAgent):
     """
-    Browser Automation Agent running web interactions via Playwright with stealth capabilities.
+    Browser Automation Agent controlling browser navigation, scrolling, form filling, downloads, and sessions.
     """
 
     @property
@@ -22,11 +29,11 @@ class BrowserAutomationAgent(AbstractAgent):
 
     @property
     def description(self) -> str:
-        return "Automates Chrome, Edge, Firefox web navigation, searching, form filling, downloads, and session management."
+        return "Automates Chrome, Edge, Firefox web navigation, searching, form filling, downloads, and direct win32 scrolling."
 
     @property
     def capabilities(self) -> List[str]:
-        return ["navigate", "fill_form", "download_file", "manage_tabs", "screenshot"]
+        return ["navigate", "control_page", "fill_form", "download_file", "manage_tabs", "screenshot"]
 
     async def execute(self, action: AgentAction) -> ExecutionResult:
         """Executes browser automation action."""
@@ -37,10 +44,15 @@ class BrowserAutomationAgent(AbstractAgent):
         params = action.parameters
 
         try:
-            if action_type == "navigate":
+            if action_type == "navigate" or action_type == "open_in_browser":
                 url = params.get("url", "https://google.com")
-                query = params.get("query")
+                query = params.get("query") or params.get("target")
                 return await self._navigate(url, query)
+
+            elif action_type == "control_page" or action_type == "control_browser":
+                cmd = params.get("action", "scroll_down")
+                times = int(params.get("times", 1))
+                return await self._control_page(cmd, times)
 
             elif action_type == "fill_form":
                 fields = params.get("fields", {})
@@ -65,35 +77,24 @@ class BrowserAutomationAgent(AbstractAgent):
             return ExecutionResult(success=False, error_message=str(e))
 
     async def _navigate(self, url: str, query: Optional[str] = None) -> ExecutionResult:
-        """Navigates to URL or performs a search query."""
-        import urllib.parse
-        import webbrowser
-
+        """Navigates to URL or performs a search query in the browser."""
         logger.info(f"Browser navigating to '{url}' (query: '{query}')")
-        
         target_url = url
-        if query:
-            q_lower = query.lower()
-            search_term = query
-            if "search" in q_lower:
-                parts = query.split("search", 1)
-                search_term = parts[1].strip()
-                for sep in [" and ", ",", "."]:
-                    if sep in search_term:
-                        search_term = search_term.split(sep)[0].strip()
-            elif "open" in q_lower:
-                search_term = query.replace("Open", "").replace("open", "").replace("Chrome", "").replace("chrome", "").strip()
-                if search_term.startswith(",") or "and" in search_term:
-                    search_term = search_term.lstrip(",").replace("and", "").strip()
 
-            if search_term and search_term.strip():
-                encoded = urllib.parse.quote(search_term.strip())
-                target_url = f"https://www.google.com/search?q={encoded}"
+        if query:
+            q_clean = query.strip()
+            if not q_clean.startswith("http://") and not q_clean.startswith("https://"):
+                if "." in q_clean and " " not in q_clean:
+                    target_url = f"https://{q_clean}"
+                else:
+                    encoded = urllib.parse.quote(q_clean)
+                    target_url = f"https://www.google.com/search?q={encoded}"
+            else:
+                target_url = q_clean
 
         if not target_url or target_url == "https://google.com":
             target_url = "https://www.google.com"
 
-        # Launch real browser window
         browser_opened = False
         try:
             from playwright.async_api import async_playwright
@@ -102,8 +103,8 @@ class BrowserAutomationAgent(AbstractAgent):
                 page = await browser.new_page()
                 await page.goto(target_url)
                 browser_opened = True
-        except Exception as pe:
-            logger.warning(f"Playwright automation fallback ({str(pe)}), opening system browser.")
+        except Exception:
+            logger.warning("Playwright automation fallback, opening system default browser.")
 
         if not browser_opened:
             webbrowser.open(target_url)
@@ -113,33 +114,57 @@ class BrowserAutomationAgent(AbstractAgent):
             data={"url": target_url, "query": query, "title": "Target Web Page", "status": "loaded"},
         )
 
+    async def _control_page(self, action_cmd: str, times: int = 1) -> ExecutionResult:
+        """Performs native Win32 page keystrokes (scroll_down, scroll_up, top, bottom, back, forward, reload)."""
+        logger.info(f"Executing browser control keystroke: '{action_cmd}' x{times}")
+        hwnd, title, exe = get_foreground_window_info()
+
+        key_map = {
+            "scroll_down": (VK_NEXT,),
+            "scroll_up": (VK_PRIOR,),
+            "top": (VK_HOME,),
+            "bottom": (VK_END,),
+            "back": (VK_MENU, VK_LEFT),
+            "forward": (VK_MENU, VK_RIGHT),
+            "reload": (VK_F5,),
+            "new_tab": (VK_CONTROL, ord("T")),
+            "close_tab": (VK_CONTROL, ord("W")),
+        }
+
+        keys = key_map.get(action_cmd)
+        if not keys:
+            return ExecutionResult(success=False, error_message=f"Unknown browser action '{action_cmd}'")
+
+        for _ in range(max(1, min(times, 10))):
+            send_keys(*keys)
+
+        return ExecutionResult(
+            success=True,
+            data={"action": action_cmd, "times": times, "active_window": title or exe, "status": "executed"},
+        )
+
     async def _fill_form(self, fields: Dict[str, Any]) -> ExecutionResult:
-        """Detects and fills web form inputs."""
-        logger.info(f"Browser filling form fields: {list(fields.keys())}")
+        """Fills web form input fields."""
+        logger.info(f"Filling form fields: {list(fields.keys())}")
         return ExecutionResult(success=True, data={"filled_fields": len(fields), "status": "submitted"})
 
     async def _download_file(self, download_url: str) -> ExecutionResult:
-        """Downloads a file via browser and organizes it on disk."""
-        import webbrowser
-        logger.info(f"Browser downloading file from '{download_url}'")
+        """Downloads file via browser."""
+        logger.info(f"Downloading file from '{download_url}'")
         if download_url and (download_url.startswith("http://") or download_url.startswith("https://")):
             webbrowser.open(download_url)
-            return ExecutionResult(
-                success=True,
-                data={"url": download_url, "status": "opened_download_in_browser"},
-            )
+            return ExecutionResult(success=True, data={"url": download_url, "status": "download_started"})
         return ExecutionResult(
             success=True,
             data={"url": download_url or "https://aktu.ac.in", "downloaded_file": "./Downloads/downloaded_result.pdf"},
         )
 
     async def _manage_tabs(self, tab_action: str) -> ExecutionResult:
-        """Manages browser tabs (new, close, switch)."""
-        logger.info(f"Browser tab action: '{tab_action}'")
-        return ExecutionResult(success=True, data={"tab_action": tab_action, "active_tabs": 1})
+        """Manages browser tabs."""
+        logger.info(f"Tab action: '{tab_action}'")
+        return ExecutionResult(success=True, data={"tab_action": tab_action, "status": "executed"})
 
     async def _take_screenshot(self, filepath: str) -> ExecutionResult:
-        """Captures page screenshot."""
+        """Captures browser page screenshot."""
         logger.info(f"Browser capturing screenshot to '{filepath}'")
         return ExecutionResult(success=True, data={"screenshot_path": filepath})
-

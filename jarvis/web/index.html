@@ -32,10 +32,10 @@
             <!-- Command Input Box -->
             <div class="glass-card">
                 <div class="card-header">
-                    <h2 class="card-title">✨ Direct Command & AI Intent Execution</h2>
+                    <h2 class="card-title">✨ Direct Command, Vision & AI Intent Execution</h2>
                 </div>
                 <div class="command-box">
-                    <input type="text" id="goalInput" class="command-input" placeholder="Type or speak a goal (e.g., 'Open Chrome, search AKTU results, and download marksheet')..." onkeydown="if(event.key === 'Enter') submitGoal()">
+                    <input type="text" id="goalInput" class="command-input" placeholder="Type or speak a goal (e.g., 'What am I looking at?', 'Open Chrome', 'Scroll down')..." onkeydown="if(event.key === 'Enter') submitGoal()">
                     <button class="btn-execute" onclick="submitGoal()">
                         <span>Execute</span> 🚀
                     </button>
@@ -43,6 +43,14 @@
 
                 <!-- Presets Quick Action Bar -->
                 <div class="presets-grid">
+                    <div class="preset-card" onclick="runPreset('What am I looking at?')">
+                        <div class="preset-title">👁️ Screen Vision</div>
+                        <div class="preset-desc">Analyze active monitor & visual content</div>
+                    </div>
+                    <div class="preset-card" onclick="runPreset('Scroll down twice')">
+                        <div class="preset-title">📜 Scroll Down</div>
+                        <div class="preset-desc">Direct Win32 browser page scroll</div>
+                    </div>
                     <div class="preset-card" onclick="runPreset('Open Chrome, search AKTU results, and download marksheet')">
                         <div class="preset-title">🌐 TEST-01: AKTU Search</div>
                         <div class="preset-desc">Browser navigation & PDF download</div>
