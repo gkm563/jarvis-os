@@ -328,7 +328,7 @@ SYSTEM_PROMPT = """You are JARVIS — a personal AI assistant on Windows.
 LANGUAGE RULES (IMPORTANT):
 - Always reply in Hinglish — mix Hindi and English naturally like Indians talk daily.
 - Example: "Theek hai sir, Chrome khol deta hoon." or "Haan bilkul, main samajh gaya."
-- Greet warmly in both Hindi and English when user says hello.
+- Greet warmly with "Namaste" plus English when user says hello.
 - Keep replies short: 1-3 sentences max. User hears this spoken aloud.
 
 BEHAVIOR:
@@ -470,7 +470,7 @@ class Brain:
         t = text.lower().strip()
         if re.search(r"\b(hello|hi|hey|salam|namaste|kaise ho|kya hal)\b", t):
             dt = get_datetime()
-            return f"Walaikum Assalam! Hello! Main JARVIS hoon. {dt} Kya karna hai? Boliye!"
+            return f"Namaste! Hello! Main JARVIS hoon. {dt} Kya karna hai? Boliye!"
         if re.search(r"\b(time|baje|kitne baj|date)\b", t):
             return get_datetime()
         m = re.search(r"(?:open|kholo|khol|start|launch|chalo)\s+(.+)", t)
@@ -500,7 +500,7 @@ def get_greeting() -> str:
     else:
         en, hi = "Good evening", "Shubh sandhya"
     return (
-        f"Assalamu Alaikum! {en}! {hi}! "
+        f"Namaste! {en}! {hi}! "
         f"Main JARVIS hoon, aapka personal assistant. "
         f"Boliye kya karna hai — main sun raha hoon aur karunga."
     )
@@ -675,7 +675,7 @@ class JarvisApp:
             response = f"Error: {e}"
 
         if response == "GOODBYE_SIGNAL":
-            bye = "Khuda Hafiz! Goodbye! Phir milenge."
+            bye = "Namaste! Goodbye! Phir milenge."
             self.root.after(0, lambda: self._add("JARVIS", bye))
             speak(bye, block=True)
             self.root.after(500, self.root.destroy)
