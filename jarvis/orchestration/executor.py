@@ -126,10 +126,13 @@ class ExecutionManager:
         """Executes a single step with permission verification, sensitive gates, and retries."""
         step.status = StepStatus.RUNNING
         action = step.action
+        if not self.registry._agents:
+            import jarvis.agents
         agent = self.registry.get(action.agent_name)
 
         if not agent:
             raise ExecutionError(step.step_id, f"Agent '{action.agent_name}' is not registered")
+
 
         # Security check 1: Permission Manager
         permission_manager.validate_action_scope(action.agent_name, action)

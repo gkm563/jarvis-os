@@ -10,6 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
+# Explicitly load and register all domain agents
+import jarvis.agents
+
 from jarvis.config.settings import settings
 from jarvis.api.routes.intent import router as intent_router
 from jarvis.api.routes.approval import router as approval_router

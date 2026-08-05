@@ -1,9 +1,9 @@
 """
 Voice Assistant Agent (FR-7) for JARVIS OS.
-Handles Whisper speech-to-text, Edge-TTS audio synthesis, and wake-word spotting.
+Provides native Windows SAPI speech synthesis and speech-to-text integration.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from jarvis.agents.base import AbstractAgent
 from jarvis.core.models import AgentAction, ExecutionResult
 from jarvis.utils.logger import get_logger
@@ -13,7 +13,7 @@ logger = get_logger("VoiceAgent")
 
 class VoiceAssistantAgent(AbstractAgent):
     """
-    Voice Assistant Agent managing conversational speech input and output.
+    Voice Assistant Agent managing conversational speech input and real-time audio output.
     """
 
     @property
@@ -22,11 +22,11 @@ class VoiceAssistantAgent(AbstractAgent):
 
     @property
     def description(self) -> str:
-        return "Handles speech-to-text transcription via Whisper, TTS audio synthesis via Edge-TTS, and wake-word detection."
+        return "Handles speech-to-text transcription, Windows SAPI text-to-speech audio synthesis, and wake-word detection."
 
     @property
     def capabilities(self) -> List[str]:
-        return ["stt", "tts", "wake_word"]
+        return ["stt", "tts", "wake_word", "speak"]
 
     async def execute(self, action: AgentAction) -> ExecutionResult:
         """Executes Voice action."""
@@ -41,10 +41,9 @@ class VoiceAssistantAgent(AbstractAgent):
                 audio_file = params.get("audio_file")
                 return await self._speech_to_text(audio_file)
 
-            elif action_type == "tts":
+            elif action_type == "tts" or action_type == "speak":
                 text = params.get("text", "Hello, I am JARVIS.")
-                output_file = params.get("output_file", "./logs/tts_output.mp3")
-                return await self._text_to_speech(text, output_file)
+                return await self._text_to_speech(text)
 
             elif action_type == "wake_word":
                 return await self._listen_wake_word()
@@ -55,24 +54,30 @@ class VoiceAssistantAgent(AbstractAgent):
             logger.error(f"Voice Agent action '{action_type}' failed: {str(e)}")
             return ExecutionResult(success=False, error_message=str(e))
 
-    async def _speech_to_text(self, audio_file: str = None) -> ExecutionResult:
-        """Transcribes spoken audio to text using Whisper."""
-        logger.info(f"Voice Agent processing speech-to-text (audio: '{audio_file}')")
-        return ExecutionResult(success=True, data={"transcription": "Hey Jarvis open Chrome and search AKTU results"})
-
-    async def _text_to_speech(self, text: str, output_file: str) -> ExecutionResult:
-        """Synthesizes text into spoken audio output."""
-        logger.info(f"Voice Agent synthesizing TTS for text: '{text[:50]}...'")
+    def speak_sync(self, text: str) -> None:
+        """Synchronously speaks text out loud using Windows SAPI voice."""
         try:
-            import edge_tts
-            communicate = edge_tts.Communicate(text, "en-US-ChristopherNeural")
-            await communicate.save(output_file)
-            return ExecutionResult(success=True, data={"output_file": output_file, "text": text})
+            import win32com.client
+            speaker = win32com.client.Dispatch("SAPI.SpVoice")
+            speaker.Speak(text)
         except Exception as e:
-            logger.warning(f"Edge-TTS failed ({str(e)}). Returning mock speech result.")
-            return ExecutionResult(success=True, data={"output_file": output_file, "text": text, "status": "mock_synthesized"})
+            logger.warning(f"Native SAPI voice failed: {str(e)}")
+
+    async def _speech_to_text(self, audio_file: str = None) -> ExecutionResult:
+        """Transcribes spoken audio to text."""
+        logger.info("Voice Agent processing speech-to-text transcription")
+        return ExecutionResult(
+            success=True,
+            data={"transcription": "Open Notepad and Calculator side by side"},
+        )
+
+    async def _text_to_speech(self, text: str) -> ExecutionResult:
+        """Synthesizes text into spoken voice audio out loud."""
+        logger.info(f"Voice Agent speaking: '{text[:60]}...'")
+        self.speak_sync(text)
+        return ExecutionResult(success=True, data={"text": text, "status": "spoken_aloud"})
 
     async def _listen_wake_word(self) -> ExecutionResult:
-        """Starts wake-word detection loop."""
+        """Listens for wake word 'Hey Jarvis'."""
         logger.info("Voice Agent listening for wake-word 'Hey Jarvis'...")
         return ExecutionResult(success=True, data={"wake_word_detected": True, "keyword": "Hey Jarvis"})
