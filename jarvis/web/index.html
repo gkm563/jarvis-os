@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JARVIS OS - AI Desktop Operating Layer Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <!-- Header Navbar -->
+    <header class="navbar">
+        <div class="brand">
+            <div class="brand-logo">🤖</div>
+            <div class="brand-title">JARVIS OS</div>
+            <div class="brand-badge">v1.0.0 Enterprise</div>
+        </div>
+        <div class="system-status">
+            <div class="status-indicator">
+                <div class="dot-online"></div>
+                <span id="healthStatus">JARVIS OS Engine Online</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Dashboard Grid -->
+    <main class="dashboard-container">
+        <!-- Left Main Column -->
+        <section class="main-column">
+            
+            <!-- Command Input Box -->
+            <div class="glass-card">
+                <div class="card-header">
+                    <h2 class="card-title">✨ Direct Command & AI Intent Execution</h2>
+                </div>
+                <div class="command-box">
+                    <input type="text" id="goalInput" class="command-input" placeholder="Type or speak a goal (e.g., 'Open Chrome, search AKTU results, and download marksheet')..." onkeydown="if(event.key === 'Enter') submitGoal()">
+                    <button class="btn-execute" onclick="submitGoal()">
+                        <span>Execute</span> 🚀
+                    </button>
+                </div>
+
+                <!-- Presets Quick Action Bar -->
+                <div class="presets-grid">
+                    <div class="preset-card" onclick="runPreset('Open Chrome, search AKTU results, and download marksheet')">
+                        <div class="preset-title">🌐 TEST-01: AKTU Search</div>
+                        <div class="preset-desc">Browser navigation & PDF download</div>
+                    </div>
+                    <div class="preset-card" onclick="runPreset('Create file test.txt in Downloads and scan for duplicates')">
+                        <div class="preset-title">📁 TEST-02: File & Duplicates</div>
+                        <div class="preset-desc">File creation & SHA-256 scan</div>
+                    </div>
+                    <div class="preset-card" onclick="runPreset('Delete all files in Downloads folder')">
+                        <div class="preset-title">⚠️ TEST-03: Mass Deletion</div>
+                        <div class="preset-desc">Triggers human confirmation gate</div>
+                    </div>
+                    <div class="preset-card" onclick="runPreset('Refactor main.py and run pytest suite')">
+                        <div class="preset-title">💻 TEST-04: AI Pair Coding</div>
+                        <div class="preset-desc">Code editing & pytest runner</div>
+                    </div>
+                    <div class="preset-card" onclick="runPreset('Open Notepad and Calculator side by side')">
+                        <div class="preset-title">🪟 TEST-05: Desktop Split</div>
+                        <div class="preset-desc">Multi-app launch & window snapping</div>
+                    </div>
+                    <div class="preset-card" onclick="runPreset('Summarize inbox and prepare daily email brief')">
+                        <div class="preset-title">📧 Email Brief</div>
+                        <div class="preset-desc">Inbox triage & draft response</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active DAG Execution Flow -->
+            <div class="glass-card">
+                <div class="card-header">
+                    <h2 class="card-title">🧠 Multi-Agent DAG Execution Plan</h2>
+                </div>
+                <div id="dagContainer" class="dag-container">
+                    <div class="step-meta">No active execution plan. Enter an instruction above to generate a DAG plan.</div>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- Right Side Panel -->
+        <section class="side-column">
+            
+            <!-- Active Domain Agents Grid -->
+            <div class="glass-card">
+                <div class="card-header">
+                    <h2 class="card-title">🤖 Active Domain Agents (20)</h2>
+                </div>
+                <div id="agentsGrid" class="agents-grid">
+                    <!-- Loaded dynamically -->
+                </div>
+            </div>
+
+            <!-- Terminal Log Stream -->
+            <div class="glass-card">
+                <div class="card-header">
+                    <h2 class="card-title">⚡ Telemetry & Audit Logs</h2>
+                </div>
+                <div id="logTerminal" class="log-terminal">
+                    <div class="log-entry info">[SYSTEM] JARVIS OS Web Dashboard Initialized.</div>
+                    <div class="log-entry info">[SYSTEM] Connected to local microservice API at http://localhost:8000.</div>
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <!-- Human Confirmation Modal -->
+    <div id="approvalModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-icon">⚠️</div>
+            <h3 class="modal-title">Human Confirmation Required</h3>
+            <p class="modal-desc" id="modalActionDesc">A sensitive action is awaiting your approval before execution.</p>
+            <div class="modal-actions">
+                <button id="approveBtn" class="btn-approve">Approve & Execute</button>
+                <button class="btn-reject" onclick="hideApprovalModal()">Reject</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/dashboard.js"></script>
+</body>
+</html>

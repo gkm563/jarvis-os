@@ -1,5 +1,5 @@
 """
-Integration Tests for FastAPI REST Endpoints.
+Integration Tests for FastAPI REST Endpoints & Web Dashboard.
 """
 
 import pytest
@@ -14,6 +14,14 @@ async def test_health_check():
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "online"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_ui():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/")
+        assert response.status_code == 200
+        assert "<title>JARVIS OS" in response.text
 
 
 @pytest.mark.asyncio
@@ -35,3 +43,11 @@ async def test_list_agents():
         data = response.json()
         assert isinstance(data, list)
         assert len(data) > 0
+
+
+@pytest.mark.asyncio
+async def test_pending_approvals():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/v1/pending_approvals")
+        assert response.status_code == 200
+        assert isinstance(response.json(), dict)

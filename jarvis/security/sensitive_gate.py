@@ -96,3 +96,18 @@ class SensitiveActionGate:
     def is_approved(self, token: str) -> bool:
         """Checks if token has been confirmed."""
         return token in self._approved_tokens
+
+    def get_pending_tokens(self) -> Dict[str, Any]:
+        """Returns dict of active pending tokens requiring confirmation."""
+        result = {}
+        for token, step in self._pending_tokens.items():
+            result[token] = {
+                "token": token,
+                "step_id": step.step_id,
+                "description": step.description,
+                "agent_name": step.action.agent_name,
+                "action_type": step.action.action_type,
+                "parameters": step.action.parameters,
+            }
+        return result
+

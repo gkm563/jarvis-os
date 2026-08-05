@@ -4,6 +4,7 @@ FastAPI Endpoint for Human Confirmation Approval Tokens.
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from typing import Dict, Any
 from jarvis.security import sensitive_gate
 from jarvis.utils.logger import get_logger
 
@@ -18,6 +19,12 @@ class ApprovalRequest(BaseModel):
 class ApprovalResponse(BaseModel):
     confirmed: bool
     message: str
+
+
+@router.get("/pending_approvals")
+async def get_pending_approvals() -> Dict[str, Any]:
+    """Retrieves all pending sensitive action confirmation tokens."""
+    return sensitive_gate.get_pending_tokens()
 
 
 @router.post("/plan/{plan_id}/confirm", response_model=ApprovalResponse)
