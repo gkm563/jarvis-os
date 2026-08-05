@@ -4,7 +4,7 @@ cd /d "%~dp0"
 echo.
 echo  ========================================
 echo    JARVIS AI - Starting...
-echo    Natural Hindi + English Voice
+echo    English Voice Assistant
 echo  ========================================
 echo.
 echo  Installing voice engine (first time only)...
@@ -13,7 +13,7 @@ echo.
 python jarvis.py
 if errorlevel 1 (
     echo.
-    echo  ERROR: Python nahi mila!
-    echo  Install karo: https://python.org
+    echo  ERROR: Python not found!
+    echo  Install from: https://python.org
     pause
 )
