@@ -17,7 +17,7 @@ import customtkinter as ctk
 import jarvis.agents as agents_module
 from jarvis.agents import agent_registry
 
-from jarvis.brain.planner import Planner
+from jarvis.brain.planner import TaskPlanner
 from jarvis.orchestration.executor import ExecutionManager
 from jarvis.core.models import Plan, Step, StepStatus, PlanStatus, AgentAction
 from jarvis.security import sensitive_gate
@@ -42,7 +42,7 @@ class JarvisOSGUI(ctk.CTk):
         self.minsize(900, 600)
 
         # Core Engines
-        self.planner = Planner()
+        self.planner = TaskPlanner()
         self.executor = ExecutionManager()
         self.current_plan: Optional[Plan] = None
         self.loop = asyncio.new_event_loop()
