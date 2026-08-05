@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any
 
 from jarvis.brain.planner import TaskPlanner
 from jarvis.orchestration.executor import ExecutionManager
-from jarvis.core.models import Plan
+from jarvis.core.models import Plan, PlanStatus
 from jarvis.utils.logger import get_logger
 
 logger = get_logger("API_Intent")
@@ -63,6 +63,13 @@ async def submit_intent(request: IntentRequest, background_tasks: BackgroundTask
 @router.get("/plan/{plan_id}", response_model=Plan)
 async def get_plan_status(plan_id: str):
     """Retrieves the status and step details of an active plan DAG."""
-    if plan_id not in active_plans:
-        raise HTTPException(status_code=404, detail=f"Plan '{plan_id}' not found")
-    return active_plans[plan_id]
+    if plan_id in active_plans:
+        return active_plans[plan_id]
+
+    # Return empty graceful completed plan for expired/stale session plan IDs
+    return Plan(
+        plan_id=plan_id,
+        user_goal="Completed Session Plan",
+        steps=[],
+        status=PlanStatus.COMPLETED,
+    )

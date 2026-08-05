@@ -79,20 +79,25 @@ function startPlanPolling(planId) {
     pollInterval = setInterval(async () => {
         try {
             const res = await fetch(`${API_BASE}/v1/plan/${planId}`);
-            if (!res.ok) return;
+            if (!res.ok) {
+                clearInterval(pollInterval);
+                return;
+            }
 
             const plan = await res.json();
             renderPlan(plan);
 
-            if (plan.status === "COMPLETED") {
-                logMessage(`Plan ${planId.substring(0, 8)} COMPLETED successfully!`, "success");
-                clearInterval(pollInterval);
-            } else if (plan.status === "FAILED") {
-                logMessage(`Plan ${planId.substring(0, 8)} FAILED during execution.`, "error");
+            if (plan.status === "COMPLETED" || plan.status === "FAILED") {
+                if (plan.status === "COMPLETED") {
+                    logMessage(`Plan ${planId.substring(0, 8)} COMPLETED successfully!`, "success");
+                } else {
+                    logMessage(`Plan ${planId.substring(0, 8)} FAILED during execution.`, "error");
+                }
                 clearInterval(pollInterval);
             }
         } catch (err) {
             console.error("Polling error:", err);
+            clearInterval(pollInterval);
         }
     }, 1000);
 }
@@ -182,6 +187,7 @@ async function fetchAgents() {
 // Log Terminal Handler
 function logMessage(msg, type = "info") {
     const term = document.getElementById("logTerminal");
+    if (!term) return;
     const time = new Date().toLocaleTimeString();
     const entry = document.createElement("div");
     entry.className = `log-entry ${type}`;
