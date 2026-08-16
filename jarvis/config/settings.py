@@ -44,9 +44,10 @@ class Settings(BaseSettings):
     # AI Model Providers & Keys
     OPENAI_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
+    GROQ_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
-    DEFAULT_LLM_PROVIDER: str = "openai"
-    DEFAULT_MODEL: str = "gpt-4o"
+    DEFAULT_LLM_PROVIDER: str = "gemini"
+    DEFAULT_MODEL: str = "gemini-2.0-flash"
 
     # Voice Assistant Parameters
     STT_MODEL: str = "whisper-base"
