@@ -44,90 +44,93 @@ async def process_user_command(goal: str):
     from jarvis.brain.llm_provider import UniversalLLMProvider
     from jarvis.api.websocket import ws_manager
     from jarvis.config.settings import settings
-    
+
     logger.info(f"Processing command intent: '{goal}'")
-    
-    # 1. Broadcast user's message to UI
-    await ws_manager.broadcast({
-        "type": "message",
-        "author": "You",
-        "text": goal,
-        "is_user": True
-    })
-    
-    # 2. Update visual status indicator to thinking
+
+    # Update visual status to thinking
     await ws_manager.broadcast({"type": "status", "state": "thinking"})
-    
+
     llm = UniversalLLMProvider()
-    
-    # 3. Classify if it's a general question or local system automation
-    classification_prompt = f"""Classify the user prompt into one of these categories:
-- "knowledge": The user is asking a general information question, educational topic, history, explanation, coding question (e.g. "who is CEO of Microsoft", "explain Dijkstra", "how World War happened", "what is this code", "hello", "hi").
-- "automation": The user wants to perform action(s) on the computer (e.g. "open chrome", "create a file", "take a photo", "close notepad", "save work", "send whatsapp").
+
+    # Classify: question or automation
+    classification_prompt = f"""Classify the user prompt into one of these two categories:
+- "knowledge": asking a question, wanting an explanation, wanting information, wanting advice, greeting, or having a conversation (e.g. "who is CEO of Microsoft", "explain recursion", "hello", "what is 2+2", "tell me a joke", "what is AI")
+- "automation": wants to DO something on the computer (e.g. "open chrome", "create a file", "take screenshot", "close notepad", "send message")
 
 User Prompt: "{goal}"
-Output ONLY the category name ("knowledge" or "automation")."""
+Output ONLY one word: knowledge OR automation"""
 
     category = "knowledge"
     try:
-        category = await llm.generate_response(classification_prompt)
-        category = category.lower().strip().replace('"', '').replace("'", "")
-        logger.info(f"Classified command category as: '{category}'")
+        category = (await llm.generate_response(classification_prompt)).lower().strip().strip('"\'')
+        logger.info(f"Classified as: '{category}'")
     except Exception as e:
-        logger.error(f"Classification failed: {e}. Defaulting to knowledge.")
-        
+        logger.error(f"Classification failed: {e}")
+
     if "automation" in category:
+        # --- AUTOMATION PATH ---
         try:
             plan = await planner.create_plan(goal)
             active_plans[plan.plan_id] = plan
         except Exception as e:
             logger.error(f"Plan creation failed: {e}")
-            err_msg = f"Something went wrong: {e}"
+            err_msg = f"Sorry, I couldn't figure out how to do that: {e}"
             await ws_manager.broadcast({"type": "message", "author": "JARVIS", "text": err_msg})
-            await ws_manager.broadcast({"type": "status", "state": "idle"})
+            await ws_manager.broadcast({"type": "status", "state": "speaking"})
             speak(err_msg, block=False)
+            await ws_manager.broadcast({"type": "status", "state": "idle"})
             return
 
-        # Execute steps silently — no plan announcement, no step narration
+        # Execute steps, collect results
+        completed_steps = []
         for step in plan.steps:
             await ws_manager.broadcast({"type": "status", "state": "thinking"})
             result = await executor._execute_step(step)
 
             if not result.success:
-                fail_msg = f"Sorry, couldn't do that — {result.error_message}"
+                fail_msg = f"Couldn't complete that — {result.error_message}"
                 await ws_manager.broadcast({"type": "message", "author": "JARVIS", "text": fail_msg})
                 await ws_manager.broadcast({"type": "status", "state": "speaking"})
                 speak(fail_msg, block=True)
                 await ws_manager.broadcast({"type": "status", "state": "idle"})
                 return
+            completed_steps.append(step.description)
 
-        success_msg = "Done, boss."
-        await ws_manager.broadcast({"type": "message", "author": "JARVIS", "text": success_msg})
-        await ws_manager.broadcast({"type": "status", "state": "speaking"})
-        speak(success_msg, block=True)
-        await ws_manager.broadcast({"type": "status", "state": "idle"})
-        
-    else:
-        # Knowledge query
+        # Ask LLM to summarize what was done in a natural, brief sentence
+        steps_summary = "; ".join(completed_steps) if completed_steps else goal
+        summary_prompt = f"""The user asked: "{goal}"
+I executed these steps: {steps_summary}
+Write ONE short, natural confirmation sentence telling the user what was done. Be direct and friendly. No filler, no bullet points."""
         try:
-            system_prompt = """You are JARVIS — a personal AI assistant on a Windows PC.
-BEHAVIOR:
-- Answer questions directly in 1-3 short sentences.
-- Keep replies short — the user hears this spoken aloud.
-- Be friendly and professional."""
+            done_msg = await llm.generate_response(summary_prompt)
+            done_msg = done_msg.strip()
+        except Exception:
+            done_msg = "Done."
+
+        await ws_manager.broadcast({"type": "message", "author": "JARVIS", "text": done_msg})
+        await ws_manager.broadcast({"type": "status", "state": "speaking"})
+        speak(done_msg, block=True)
+        await ws_manager.broadcast({"type": "status", "state": "idle"})
+
+    else:
+        # --- KNOWLEDGE / CONVERSATION PATH ---
+        try:
+            system_prompt = """You are JARVIS — a sharp, witty, and knowledgeable personal AI assistant running on a Windows PC.
+
+RULES:
+- Answer the question fully and correctly.
+- Be concise: 1–4 sentences for simple questions, a bit more if it's complex.
+- Speak naturally — the user hears this out loud, so avoid markdown, bullet points, or headers.
+- Be friendly and direct. No filler phrases like "Great question!" or "Certainly!".
+- If greeted, greet back warmly in one line.
+- If asked to tell a joke or be creative, do it confidently."""
             response = await llm.generate_response(goal, system_prompt=system_prompt)
+            response = response.strip()
         except Exception as e:
-            logger.error(f"LLM generate_response failed: {e}")
-            response = f"I ran into an issue finding that answer: {e}"
-            
-        # Broadcast JARVIS reply bubble to UI
-        await ws_manager.broadcast({
-            "type": "message",
-            "author": "JARVIS",
-            "text": response
-        })
-        
-        # Speak response aloud
+            logger.error(f"LLM response failed: {e}")
+            response = "I ran into a problem answering that. Try again?"
+
+        await ws_manager.broadcast({"type": "message", "author": "JARVIS", "text": response})
         await ws_manager.broadcast({"type": "status", "state": "speaking"})
         speak(response, block=True)
         await ws_manager.broadcast({"type": "status", "state": "idle"})
