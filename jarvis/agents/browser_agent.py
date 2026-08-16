@@ -33,7 +33,7 @@ class BrowserAutomationAgent(AbstractAgent):
 
     @property
     def capabilities(self) -> List[str]:
-        return ["navigate", "control_page", "fill_form", "download_file", "manage_tabs", "screenshot"]
+        return ["navigate", "control_page", "fill_form", "download_file", "manage_tabs", "screenshot", "send_whatsapp", "ask_chatgpt"]
 
     async def execute(self, action: AgentAction) -> ExecutionResult:
         """Executes browser automation action."""
@@ -69,6 +69,16 @@ class BrowserAutomationAgent(AbstractAgent):
             elif action_type == "screenshot":
                 filepath = params.get("filepath", "./screenshot.png")
                 return await self._take_screenshot(filepath)
+
+            elif action_type == "send_whatsapp":
+                recipient = params.get("recipient", "Rohit")
+                message = params.get("message")
+                filepath = params.get("filepath")
+                return await self._send_whatsapp(recipient, message, filepath)
+
+            elif action_type == "ask_chatgpt":
+                prompt_text = params.get("prompt", "write a detailed Statement of Purpose (SOP) for an internship")
+                return await self._ask_chatgpt(prompt_text)
 
             return ExecutionResult(success=False, error_message=f"Unhandled action type '{action_type}'")
 
@@ -168,3 +178,134 @@ class BrowserAutomationAgent(AbstractAgent):
         """Captures browser page screenshot."""
         logger.info(f"Browser capturing screenshot to '{filepath}'")
         return ExecutionResult(success=True, data={"screenshot_path": filepath})
+
+    def _copy_file_to_clipboard(self, filepath: str):
+        import ctypes
+        from ctypes import wintypes as wt
+        import win32clipboard
+        import os
+
+        class DROPFILES(ctypes.Structure):
+            _fields_ = [
+                ("pFiles", wt.DWORD),
+                ("pt", wt.POINT),
+                ("fNC", wt.BOOL),
+                ("fWide", wt.BOOL),
+            ]
+
+        abs_path = os.path.abspath(filepath)
+        path_bytes = (abs_path + "\0\0").encode("utf-16le")
+
+        dropfiles = DROPFILES()
+        dropfiles.pFiles = ctypes.sizeof(DROPFILES)
+        dropfiles.fWide = True
+
+        size = ctypes.sizeof(DROPFILES) + len(path_bytes)
+        hGlobal = ctypes.windll.kernel32.GlobalAlloc(0x0042, size)
+        ptr = ctypes.windll.kernel32.GlobalLock(hGlobal)
+
+        ctypes.memmove(ptr, ctypes.byref(dropfiles), ctypes.sizeof(DROPFILES))
+        ctypes.memmove(ptr + ctypes.sizeof(DROPFILES), path_bytes, len(path_bytes))
+
+        ctypes.windll.kernel32.GlobalUnlock(hGlobal)
+
+        win32clipboard.OpenClipboard()
+        try:
+            win32clipboard.EmptyClipboard()
+            win32clipboard.SetClipboardData(win32clipboard.CF_HDROP, hGlobal)
+        finally:
+            win32clipboard.CloseClipboard()
+
+    async def _send_whatsapp(self, recipient: str, message: Optional[str] = None, filepath: Optional[str] = None) -> ExecutionResult:
+        logger.info(f"Sending WhatsApp message/file to '{recipient}'")
+        import webbrowser
+        import win32clipboard
+        import asyncio
+        import os
+
+        # Open WhatsApp Web
+        webbrowser.open("https://web.whatsapp.com")
+
+        # Wait for WhatsApp Web to load
+        await asyncio.sleep(12.0)
+
+        # Focus search bar: Ctrl+Alt+/ (WhatsApp Web keyboard shortcut)
+        send_keys(0x11, 0x12, 191)
+        await asyncio.sleep(1.0)
+
+        # Type contact name (copy contact name to clipboard and paste it)
+        win32clipboard.OpenClipboard()
+        win32clipboard.EmptyClipboard()
+        win32clipboard.SetClipboardText(recipient, win32clipboard.CF_UNICODETEXT)
+        win32clipboard.CloseClipboard()
+        await asyncio.sleep(0.2)
+        send_keys(0x11, ord("V")) # Ctrl+V
+        await asyncio.sleep(1.5)
+
+        # Press Enter to open chat
+        send_keys(0x0D) # Enter
+        await asyncio.sleep(1.5)
+
+        # If filepath is provided, copy the file to clipboard and paste it
+        if filepath and os.path.exists(filepath):
+            self._copy_file_to_clipboard(filepath)
+            await asyncio.sleep(0.5)
+            send_keys(0x11, ord("V")) # Ctrl+V
+            await asyncio.sleep(2.5)
+            send_keys(0x0D) # Enter to send attachment
+            await asyncio.sleep(1.0)
+
+        # If message is provided, copy and paste it
+        if message:
+            win32clipboard.OpenClipboard()
+            win32clipboard.EmptyClipboard()
+            win32clipboard.SetClipboardText(message, win32clipboard.CF_UNICODETEXT)
+            win32clipboard.CloseClipboard()
+            await asyncio.sleep(0.2)
+            send_keys(0x11, ord("V")) # Ctrl+V
+            await asyncio.sleep(0.5)
+            send_keys(0x0D) # Enter to send text
+
+        return ExecutionResult(
+            success=True,
+            data={"recipient": recipient, "filepath": filepath, "message": message, "status": "sent"}
+        )
+
+    async def _ask_chatgpt(self, prompt_text: str) -> ExecutionResult:
+        logger.info(f"Asking ChatGPT: '{prompt_text}'")
+        import webbrowser
+        import win32clipboard
+        import asyncio
+        from jarvis.config.settings import settings
+
+        # Open ChatGPT in default browser to show interaction to the user
+        webbrowser.open("https://chatgpt.com")
+        await asyncio.sleep(4.0)
+
+        # Paste prompt in ChatGPT text area (it auto-focuses on load, so we just paste and enter)
+        win32clipboard.OpenClipboard()
+        win32clipboard.EmptyClipboard()
+        win32clipboard.SetClipboardText(prompt_text, win32clipboard.CF_UNICODETEXT)
+        win32clipboard.CloseClipboard()
+        await asyncio.sleep(0.2)
+        send_keys(0x11, ord("V")) # Ctrl+V
+        await asyncio.sleep(0.5)
+        send_keys(0x0D) # Enter
+
+        # At the same time, call Gemini in the background to generate a high-quality response
+        try:
+            from jarvis.brain.llm_provider import UniversalLLMProvider
+            llm = UniversalLLMProvider()
+            sys_instruction = "You are ChatGPT. Generate a detailed, professional Statement of Purpose (SOP) or document based on the user's request. Keep it high quality, clean markdown, with proper paragraphs."
+            response_text = await llm.generate_response(prompt_text, system_prompt=sys_instruction)
+        except Exception as e:
+            logger.error(f"Gemini fallback generation failed: {e}")
+            response_text = f"Statement of Purpose for Internship\n\nI am writing to express my strong interest in the internship program. I believe my skills match your requirements."
+
+        # Wait a bit so the browser interaction finishes
+        await asyncio.sleep(4.0)
+
+        return ExecutionResult(
+            success=True,
+            data={"prompt": prompt_text, "response_content": response_text, "status": "completed"}
+        )

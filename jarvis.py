@@ -27,12 +27,37 @@ import urllib.request
 import urllib.error
 import urllib.parse
 import tempfile
+import asyncio
 from datetime import datetime
 from pathlib import Path
+
+# JARVIS OS Modular imports
+from jarvis.brain.planner import TaskPlanner
+from jarvis.orchestration.executor import ExecutionManager, AgentRegistry
+from jarvis.core.models import Plan, Step, AgentAction, PlanStatus, StepStatus
+from jarvis.agents.desktop_agent import DesktopControlAgent
+from jarvis.agents.browser_agent import BrowserAutomationAgent
+from jarvis.agents.file_agent import FileSystemAgent
+from jarvis.agents.office_agent import OfficeAgent
+from jarvis.agents.research_agent import InternetResearchAgent
 
 ROOT = Path(__file__).resolve().parent
 ENV_FILE = ROOT / ".env"
 NOTES_DIR = Path.home() / "Desktop" / "JARVIS Notes"
+
+
+def set_startup(enable: bool = True) -> str:
+    startup_dir = Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
+    shortcut_path = startup_dir / "JARVIS.bat"
+    
+    if enable:
+        bat_content = f'@echo off\ncd /d "{ROOT}"\nstart START.bat\n'
+        shortcut_path.write_text(bat_content, encoding="utf-8")
+        return "JARVIS registered in Windows startup."
+    else:
+        if shortcut_path.exists():
+            shortcut_path.unlink()
+        return "JARVIS removed from Windows startup."
 
 
 def load_env() -> dict:
@@ -108,47 +133,62 @@ LANGUAGE (CRITICAL):
 - Be friendly and professional."""
 
 
-from voice_engine import speak, listen_best, ensure_voice_deps, VOICES
+from voice_engine import speak, listen_best, ensure_voice_deps, stop_speaking, VOICES
 
 ensure_voice_deps()
 
-
-def listen_voice(timeout_sec: int = 8, lang: str = "auto", api_key: str = "", on_status=None, on_partial=None) -> tuple[str, str]:
-    return listen_best(api_key, timeout_sec, lang, on_status=on_status, on_partial=on_partial)
+_cancel_event = threading.Event()
 
 
-def listen_and_type_live(entry_widget, root, timeout_sec: int = 8, lang: str = "auto", api_key: str = "", on_chat=None) -> tuple[str, str]:
-    """Listen + live type in entry box. Returns (text, error)."""
-    status = {"last": ""}
+def request_cancel():
+    _cancel_event.set()
 
-    def on_status(msg: str):
-        status["last"] = msg
-        root.after(0, lambda m=msg: _update_entry(entry_widget, m))
 
-    def on_partial(text: str):
-        root.after(0, lambda t=text: _update_entry(entry_widget, f"📝 {t}"))
+def clear_cancel():
+    _cancel_event.clear()
 
-    text, err = listen_best(api_key, timeout_sec, lang, on_status=on_status, on_partial=on_partial)
 
+def is_cancelled() -> bool:
+    return _cancel_event.is_set()
+
+
+def interruptible_sleep(seconds: float, step: float = 0.15) -> bool:
+    """Sleep in chunks; return False if cancelled."""
+    elapsed = 0.0
+    while elapsed < seconds:
+        if is_cancelled():
+            return False
+        wait = min(step, seconds - elapsed)
+        time.sleep(wait)
+        elapsed += wait
+    return True
+
+
+def listen_voice(timeout_sec: int = 8, lang: str = "auto", api_key: str = "", on_status=None, on_partial=None, should_stop=None) -> tuple[str, str]:
+    return listen_best(api_key, timeout_sec, lang, on_status=on_status, on_partial=on_partial, should_stop=should_stop)
+
+
+def listen_voice_only(
+    api_key: str,
+    timeout_sec: int = 10,
+    lang: str = "english",
+    on_status=None,
+    should_stop=None,
+) -> tuple[str, str]:
+    """Listen only — no typing anywhere. Returns (text, error)."""
+    def on_status_safe(msg: str):
+        if on_status:
+            on_status(msg)
+
+    text, err = listen_best(
+        api_key, timeout_sec, lang,
+        on_status=on_status_safe,
+        on_partial=None,
+        should_stop=should_stop,
+    )
     if text:
-        root.after(0, lambda t=text: _update_entry(entry_widget, t))
-        if on_chat:
-            root.after(0, lambda t=text: on_chat(f'🎤 Heard: "{t}"'))
-        return text, ""
-    return "", err or status["last"] or L("Didn't hear anything", "Sunai nahi diya")
-
-
-def _update_entry(entry, text: str):
-    entry.delete(0, tk.END)
-    entry.insert(0, text)
-
-
-def typewriter_effect(entry, root, text: str, delay: float = 0.025):
-    entry.delete(0, tk.END)
-    for i, ch in enumerate(text):
-        entry.insert(tk.END, ch)
-        root.update_idletasks()
-        time.sleep(delay)
+        return text.strip(), ""
+    return "", err or L("Didn't hear anything", "Sunai nahi diya")
 
 
 # ─────────────────────────────────────────────
@@ -368,9 +408,12 @@ def show_camera_photos() -> str:
 
 
 def camera_take_photo() -> str:
-    """Camera kholo, photo click karo, photos folder kholo."""
+    """Open camera, take photo, open photos folder."""
+    if is_cancelled():
+        return L("Cancelled.", "Cancel ho gaya.")
     subprocess.Popen("start microsoft.windows.camera:", shell=True)
-    time.sleep(4.0)
+    if not interruptible_sleep(4.0):
+        return L("Cancelled.", "Cancel ho gaya.")
     ps = (
         "Add-Type -AssemblyName System.Windows.Forms; "
         "Start-Sleep -Milliseconds 800; "
@@ -379,7 +422,8 @@ def camera_take_photo() -> str:
         '[System.Windows.Forms.SendKeys]::SendWait(" ")'
     )
     subprocess.run(["powershell", "-NoProfile", "-Command", ps], shell=True, capture_output=True)
-    time.sleep(1.5)
+    if not interruptible_sleep(1.5):
+        return L("Cancelled.", "Cancel ho gaya.")
     folder = _find_camera_roll()
     if folder:
         subprocess.Popen(f'explorer "{folder}"')
@@ -490,6 +534,8 @@ def try_local_action(text: str) -> str | None:
     results = []
     parts = re.split(r"\s+(?:aur|and|then|also|phir)\s+", norm)
     for part in parts:
+        if is_cancelled():
+            return L("Cancelled.", "Cancel ho gaya.")
         part = part.strip()
         if not part:
             continue
@@ -510,15 +556,29 @@ class Brain:
         if self.api_key and not self.api_key.startswith("gsk_"):
             self.api_key = ""
         self.current_lang = APP_LANG
+        self.app = None
+
+        # Register agents in registry
+        self.registry = AgentRegistry()
+        self.registry.register(DesktopControlAgent())
+        self.registry.register(BrowserAutomationAgent())
+        self.registry.register(FileSystemAgent())
+        self.registry.register(OfficeAgent())
+        self.registry.register(InternetResearchAgent())
+
+        self.planner = TaskPlanner()
+        self.executor = ExecutionManager(registry=self.registry)
 
     def set_key(self, key: str):
         self.api_key = key.strip()
         save_api_key(self.api_key)
 
     def has_ai(self) -> bool:
-        return bool(self.api_key and self.api_key.startswith("gsk_"))
+        return bool(self.api_key and self.api_key.startswith("gsk_")) or bool(self.env.get("GEMINI_API_KEY"))
 
     def verify_ai(self) -> tuple[bool, str]:
+        if self.env.get("GEMINI_API_KEY"):
+            return True, "Gemini Connected"
         if not self.has_ai():
             return False, "Groq API key missing"
         data = self._groq_request([{"role": "user", "content": "OK"}], tools=None)
@@ -558,53 +618,125 @@ class Brain:
         if re.search(r"\b(bye|goodbye|alvida|exit|quit|close jarvis|band karo jarvis)\b", t):
             return "GOODBYE_SIGNAL", self.current_lang
 
-        # ALWAYS try local action first — AI se pehle, taaki sirf "theek hai" na bole
-        action = try_local_action(user_text)
-        if action:
-            reply = L(f"Done! {action}", f"Theek hai! {action}")
-            self.history.append({"role": "user", "content": user_text})
-            self.history.append({"role": "assistant", "content": reply})
-            if len(self.history) > 16:
-                self.history = self.history[-16:]
-            return reply, self.current_lang
+        # Run async think_async
+        try:
+            return asyncio.run(self.think_async(user_text))
+        except Exception as e:
+            logger.error(f"Error in think_async: {e}")
+            return f"I ran into an issue: {e}", self.current_lang
 
-        if self.has_ai():
-            result = self._ai_think(user_text)
-            if result:
-                return result, self.current_lang
+    async def think_async(self, user_text: str) -> tuple[str, str]:
+        self.current_lang = detect_language(user_text)
+        t = user_text.lower().strip()
 
-        return self._rule_think(user_text), self.current_lang
+        # Special check: custom shutdown
+        if any(w in t for w in ["switch off", "shutdown", "shut down", "turn off computer"]) and any(w in t for w in ["laptop", "pc", "computer"]):
+            if self.app:
+                self.app.root.after(0, self.app._graceful_shutdown)
+                await asyncio.sleep(8.0)
+                return "GOODBYE_SIGNAL", self.current_lang
 
-    def _ai_think(self, user_text: str) -> str | None:
-        # Local action already tried in think() — ab sirf chat
-        self.history.append({"role": "user", "content": user_text})
-        if len(self.history) > 16:
-            self.history = self.history[-16:]
+        from jarvis.brain.llm_provider import UniversalLLMProvider
+        llm = UniversalLLMProvider()
 
-        messages = [{"role": "system", "content": get_system_prompt(self.current_lang)}] + self.history
-        data = self._groq_request(messages, tools=None)
+        classification_prompt = f"""Classify the user prompt into one of these categories:
+- "knowledge": The user is asking a general information question, educational topic, history, explanation, coding question (e.g. "who is CEO of Microsoft", "explain Dijkstra", "how World War happened", "what is this code", "hello", "hi").
+- "automation": The user wants to perform action(s) on the computer (e.g. "open chrome", "create a file", "take a photo", "close notepad", "save work", "send whatsapp").
 
-        if not data:
-            self.history.pop()
-            return None
-        if "error" in data:
-            self.history.pop()
-            # Fallback on API error
-            return self._rule_think(user_text)
+User Prompt: "{user_text}"
+Output ONLY the category name ("knowledge" or "automation")."""
 
-        reply = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-        if reply:
-            self.history.append({"role": "assistant", "content": reply})
-            return reply
+        category = "knowledge"
+        try:
+            category = await llm.generate_response(classification_prompt)
+            category = category.lower().strip().replace('"', '').replace("'", "")
+            logger.info(f"Classified prompt category as: '{category}'")
+        except Exception as e:
+            logger.error(f"Classification failed: {e}. Defaulting to knowledge.")
 
-        self.history.pop()
-        return self._rule_think(user_text) or L("Sorry, I didn't understand. Please try again.", "Sorry, samajh nahi aaya. Dubara bolo.")
+        if "automation" in category:
+            try:
+                plan = await self.planner.create_plan(user_text)
+            except Exception as e:
+                logger.error(f"Plan creation failed: {e}")
+                return f"I had trouble planning that: {e}", self.current_lang
+
+            logger.info(f"Generated plan with {len(plan.steps)} steps")
+            if not plan.steps:
+                return "I couldn't identify any steps to execute.", self.current_lang
+
+            # Speak plan created
+            if self.app:
+                msg = f"I've created a plan with {len(plan.steps)} steps to execute. Starting now."
+                self.app._speak_sync(msg)
+
+            for step in plan.steps:
+                if self.app:
+                    msg = f"Executing step: {step.description}"
+                    self.app._speak_sync(msg)
+
+                # Check if sensitive
+                if step.action.is_sensitive or any(w in step.action.action_type for w in ["delete", "send_whatsapp", "system_state"]):
+                    if self.app:
+                        self.app._speak_sync("This step requires your approval.")
+                        approved = self.app._ask_confirmation(step.description)
+                        if not approved:
+                            self.app._speak_sync("Action cancelled by user.")
+                            return "I cancelled the remaining actions as requested.", self.current_lang
+
+                # Camera guide
+                if step.action.agent_name == "desktop_agent" and step.action.action_type == "camera_take_photo":
+                    if self.app:
+                        self.app._speak_sync("Please position yourself in front of the webcam. Capturing photo in 4 seconds.")
+
+                # Execute step
+                result = await self.executor._execute_step(step)
+                if not result.success:
+                    err_msg = f"I got stuck at step: {step.description} due to: {result.error_message}"
+                    if self.app:
+                        self.app._speak_sync(f"Step failed: {result.error_message}")
+                    return err_msg, self.current_lang
+
+                # Parameter propagation
+                if result.data and "response_content" in result.data:
+                    content = result.data["response_content"]
+                    for next_step in plan.steps:
+                        if next_step.step_id != step.step_id:
+                            params = next_step.action.parameters
+                            for k, v in list(params.items()):
+                                if isinstance(v, str) and "{response_content}" in v:
+                                    params[k] = v.replace("{response_content}", content)
+                                if k == "content" and (not v or v == "JARVIS OS Generated Document"):
+                                    params[k] = content
+
+                if result.data and "output_pdf" in result.data:
+                    pdf_path = result.data["output_pdf"]
+                    for next_step in plan.steps:
+                        if next_step.step_id != step.step_id:
+                            params = next_step.action.parameters
+                            for k, v in list(params.items()):
+                                if isinstance(v, str) and "{output_pdf}" in v:
+                                    params[k] = v.replace("{output_pdf}", pdf_path)
+                                if k == "filepath" and ("attachment" in k or "file" in k or not v):
+                                    params[k] = pdf_path
+
+            success_msg = "Completed successfully, boss."
+            return success_msg, self.current_lang
+
+        else:
+            try:
+                system_prompt = get_system_prompt(self.current_lang)
+                response = await llm.generate_response(user_text, system_prompt=system_prompt)
+                self.history.append({"role": "user", "content": user_text})
+                self.history.append({"role": "assistant", "content": response})
+                if len(self.history) > 16:
+                    self.history = self.history[-16:]
+                return response, self.current_lang
+            except Exception as e:
+                logger.error(f"Knowledge query failed: {e}")
+                return self._rule_think(user_text), self.current_lang
 
     def _rule_think(self, text: str) -> str:
-        lang = self.current_lang
-        action = try_local_action(text)
-        if action:
-            return action
         if re.search(r"\b(hello|hi|hey|good morning|good evening)\b", text.lower()):
             return L(
                 f"Hello! I'm JARVIS. {get_datetime('english')} What can I do for you?",
@@ -620,24 +752,24 @@ def get_greeting(lang: str = "english") -> str:
     now = datetime.now()
     period = "morning" if now.hour < 12 else "afternoon" if now.hour < 17 else "evening"
     return (
-        f"Hello! Good {period}! I'm JARVIS, your personal assistant. "
-        "Speak in English — I'll listen, talk back, and do what you ask. "
-        "Try: open Chrome, take a photo, search something, or create a note!"
+        f"Hello! Good {period}! I'm JARVIS. "
+        "Just speak — tell me what to do. Open apps, take photos, search, anything."
     )
 
 
-# UI Theme
+# UI Theme — clean voice-first
 C = {
-    "bg": "#0b0f19", "card": "#131a2b", "card2": "#1a2236",
-    "accent": "#6366f1", "accent2": "#22d3ee", "green": "#10b981",
-    "red": "#ef4444", "orange": "#f59e0b", "text": "#e2e8f0", "muted": "#64748b",
-    "user": "#a78bfa", "jarvis": "#38bdf8",
+    "bg": "#070b14", "card": "#0f1629", "card2": "#151e33",
+    "accent": "#7c6cff", "accent2": "#5eead4", "green": "#34d399",
+    "red": "#f87171", "orange": "#fbbf24", "text": "#f1f5f9", "muted": "#94a3b8",
+    "user": "#c4b5fd", "jarvis": "#67e8f9", "mic_idle": "#4f46e5", "mic_hot": "#ef4444",
 }
 
 
 class JarvisApp:
     def __init__(self):
         self.brain = Brain()
+        self.brain.app = self
         self.listening = False
         self.auto_listen = True
         self.speaking = False
@@ -645,10 +777,15 @@ class JarvisApp:
         self.dictate_mode = False
         self.current_lang = APP_LANG
         self._pulse_id = None
+        self._auto_mic_after_id = None
+        self._task_gen = 0
+        self._working = False
+        self._last_spoken = ""
+        self._mic_ready_at = 0.0
 
         self.root = tk.Tk()
-        self.root.title("JARVIS AI Assistant")
-        self.root.geometry("820x780")
+        self.root.title("JARVIS — Voice Assistant")
+        self.root.geometry("720x820")
         self.root.configure(bg=C["bg"])
         self.root.minsize(700, 650)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -665,22 +802,60 @@ class JarvisApp:
 
         greeting = get_greeting("english")
         self._add("JARVIS", greeting)
-        threading.Thread(target=self._speak_and_listen, args=(greeting, "english"), daemon=True).start()
+        threading.Thread(target=self._speak_and_listen, args=(greeting, "english", 0), daemon=True).start()
 
-    def _speak_and_listen(self, text: str, lang: str):
+    def _cancel_timers(self):
+        if self._auto_mic_after_id:
+            try:
+                self.root.after_cancel(self._auto_mic_after_id)
+            except Exception:
+                pass
+            self._auto_mic_after_id = None
+        if self._pulse_id:
+            try:
+                self.root.after_cancel(self._pulse_id)
+            except Exception:
+                pass
+            self._pulse_id = None
+
+    def _interrupt(self):
+        """Stop speech, cancel in-progress task, prepare for new input."""
+        self._task_gen += 1
+        request_cancel()
+        stop_speaking()
+        self._cancel_timers()
+        self.speaking = False
+        self._working = False
+
+    def _speak_and_listen(self, text: str, lang: str, task_gen: int):
+        if task_gen != self._task_gen:
+            return
+        self._last_spoken = text
         self.speaking = True
         speak(text, lang=lang, block=True)
         self.speaking = False
-        # TTS ke baad thoda wait — phir mic on (echo avoid)
+        if task_gen != self._task_gen:
+            return
+        # Wait so mic does NOT hear JARVIS own voice from speakers
+        self._mic_ready_at = time.time() + 3.0
         if self.auto_listen and self.running:
-            self.root.after(1200, self._auto_mic)
+            self._auto_mic_after_id = self.root.after(3000, self._auto_mic)
 
     def _auto_mic(self):
-        if not self.listening and self.running and self.auto_listen:
-            self._toggle_mic(auto=True)
+        if not self.running or not self.auto_listen:
+            return
+        if time.time() < self._mic_ready_at:
+            wait_ms = int((self._mic_ready_at - time.time()) * 1000) + 200
+            self._auto_mic_after_id = self.root.after(max(wait_ms, 200), self._auto_mic)
+            return
+        if self.speaking or self._working or self.listening:
+            self._auto_mic_after_id = self.root.after(400, self._auto_mic)
+            return
+        self._toggle_mic(auto=True)
 
     def _on_close(self):
         self.running = False
+        self._interrupt()
         self.root.destroy()
 
     def _settings(self):
@@ -693,126 +868,100 @@ class JarvisApp:
                 self._set_status("AI Connected", C["green"])
 
     def _build_ui(self):
-        # ── Header ──
-        header = tk.Frame(self.root, bg=C["card"], height=56)
+        # Header
+        header = tk.Frame(self.root, bg=C["card"], height=52)
         header.pack(fill="x")
         header.pack_propagate(False)
 
-        tk.Label(header, text="⚡ JARVIS", font=("Segoe UI", 18, "bold"),
-                 bg=C["card"], fg=C["accent2"]).pack(side="left", padx=20, pady=12)
-        tk.Label(header, text="AI Assistant", font=("Segoe UI", 11),
+        tk.Label(header, text="JARVIS", font=("Segoe UI", 20, "bold"),
+                 bg=C["card"], fg=C["accent2"]).pack(side="left", padx=18, pady=10)
+        tk.Label(header, text="Voice Only", font=("Segoe UI", 10),
                  bg=C["card"], fg=C["muted"]).pack(side="left", pady=14)
 
         self.status_dot = tk.Label(header, text="● Ready", font=("Segoe UI", 10, "bold"),
-                                    bg=C["card"], fg=C["orange"])
+                                   bg=C["card"], fg=C["green"])
         self.status_dot.pack(side="right", padx=16)
 
-        self.lang_label = tk.Label(header, text="🇬🇧 English", font=("Segoe UI", 10),
-                                    bg=C["card2"], fg=C["text"], padx=8, pady=2)
-        self.lang_label.pack(side="right", padx=6, pady=14)
-
         tk.Button(header, text="⚙", font=("Segoe UI", 12), bg=C["card2"], fg=C["muted"],
-                  relief="flat", padx=8, command=self._settings).pack(side="right", padx=4, pady=12)
+                  relief="flat", padx=8, command=self._settings).pack(side="right", padx=8, pady=10)
 
-        # ── Chat area ──
+        # Chat
         chat_wrap = tk.Frame(self.root, bg=C["bg"])
-        chat_wrap.pack(fill="both", expand=True, padx=14, pady=(10, 6))
+        chat_wrap.pack(fill="both", expand=True, padx=16, pady=(12, 8))
 
         self.chat = scrolledtext.ScrolledText(
-            chat_wrap, wrap=tk.WORD, font=("Segoe UI", 12),
-            bg=C["card"], fg=C["text"], relief="flat", padx=16, pady=14,
+            chat_wrap, wrap=tk.WORD, font=("Segoe UI", 13),
+            bg=C["card"], fg=C["text"], relief="flat", padx=18, pady=16,
             state="disabled", insertbackground=C["accent2"],
-            selectbackground=C["accent"],
+            selectbackground=C["accent"], borderwidth=0,
         )
         self.chat.pack(fill="both", expand=True)
-        self.chat.tag_config("user", foreground=C["user"], font=("Segoe UI", 12, "bold"))
+        self.chat.tag_config("user", foreground=C["user"], font=("Segoe UI", 13, "bold"))
         self.chat.tag_config("jarvis", foreground=C["jarvis"])
-        self.chat.tag_config("action", foreground=C["green"], font=("Segoe UI", 11, "italic"))
-        self.chat.tag_config("sys", foreground=C["muted"], font=("Segoe UI", 10, "italic"))
+        self.chat.tag_config("action", foreground=C["green"], font=("Segoe UI", 12, "italic"))
+        self.chat.tag_config("sys", foreground=C["muted"], font=("Segoe UI", 11, "italic"))
 
-        # ── Live status bar (interactive feedback) ──
-        status_frame = tk.Frame(self.root, bg=C["card2"], padx=14, pady=10)
-        status_frame.pack(fill="x", padx=14, pady=(0, 6))
+        # Live status
+        status_frame = tk.Frame(self.root, bg=C["card2"], padx=20, pady=14)
+        status_frame.pack(fill="x", padx=16, pady=(0, 8))
 
         self.live_label = tk.Label(
             status_frame,
-            text="👂 Press mic or type — I listen and execute your commands",
-            font=("Segoe UI", 11, "bold"), bg=C["card2"], fg=C["accent2"],
-            anchor="w", wraplength=760,
+            text="Just speak — I listen and do what you say",
+            font=("Segoe UI", 13, "bold"), bg=C["card2"], fg=C["text"],
+            anchor="center", wraplength=640,
         )
         self.live_label.pack(fill="x")
 
-        self.progress = tk.Canvas(status_frame, height=3, bg=C["card2"], highlightthickness=0)
-        self.progress.pack(fill="x", pady=(6, 0))
-        self._progress_bar = self.progress.create_rectangle(0, 0, 0, 3, fill=C["accent"], width=0)
+        self.heard_label = tk.Label(
+            status_frame, text="", font=("Segoe UI", 12),
+            bg=C["card2"], fg=C["accent2"], anchor="center", wraplength=640,
+        )
+        self.heard_label.pack(fill="x", pady=(6, 0))
 
-        # ── Input bar ──
-        bottom = tk.Frame(self.root, bg=C["card"], pady=12)
-        bottom.pack(fill="x", padx=14, pady=(0, 8))
+        self.progress = tk.Canvas(status_frame, height=4, bg=C["card2"], highlightthickness=0)
+        self.progress.pack(fill="x", pady=(10, 0))
+        self._progress_bar = self.progress.create_rectangle(0, 0, 0, 4, fill=C["accent"], width=0)
+
+        # Big mic area — voice only, no typing
+        mic_area = tk.Frame(self.root, bg=C["bg"], pady=8)
+        mic_area.pack(fill="x", padx=16, pady=(0, 12))
 
         self.mic_btn = tk.Button(
-            bottom, text="🎤", font=("Segoe UI", 20),
-            bg=C["accent"], fg="white", relief="flat", width=3, height=1,
-            cursor="hand2", activebackground="#818cf8",
+            mic_area, text="🎤", font=("Segoe UI", 36),
+            bg=C["mic_idle"], fg="white", relief="flat",
+            width=4, height=1, cursor="hand2",
+            activebackground=C["accent"],
             command=lambda: self._toggle_mic(auto=False),
         )
-        self.mic_btn.pack(side="left", padx=(10, 6))
+        self.mic_btn.pack(pady=(4, 8))
 
-        entry_wrap = tk.Frame(bottom, bg=C["card2"], padx=2, pady=2)
-        entry_wrap.pack(side="left", fill="x", expand=True, padx=4)
+        tk.Label(mic_area, text="Tap mic → speak your command → I do it",
+                 font=("Segoe UI", 10), bg=C["bg"], fg=C["muted"]).pack()
 
-        self.entry = tk.Entry(
-            entry_wrap, font=("Segoe UI", 13), bg=C["card2"], fg=C["text"],
-            insertbackground=C["accent2"], relief="flat",
-        )
-        self.entry.pack(fill="x", ipady=12, padx=10)
-        self.entry.bind("<Return>", lambda e: self._send())
-        self.entry.focus()
-
-        tk.Button(bottom, text="➤ GO", font=("Segoe UI", 11, "bold"),
-                  bg=C["green"], fg="white", relief="flat", padx=18, pady=10,
-                  cursor="hand2", activebackground="#059669",
-                  command=self._send).pack(side="right", padx=(4, 10))
-
-        # ── Quick actions ──
-        chips = tk.Frame(self.root, bg=C["bg"])
-        chips.pack(fill="x", padx=14, pady=(0, 10))
-
-        actions = [
-            ("📷 Camera+Photo", "open camera and take a photo"),
-            ("🔍 Search", "search Python"),
-            ("📝 Note", "create note meeting tomorrow"),
-            ("⏰ Time", "what time is it"),
-            ("🌐 Chrome", "open chrome"),
-        ]
-        for label, cmd in actions:
-            tk.Button(
-                chips, text=label, font=("Segoe UI", 10, "bold"),
-                bg=C["card2"], fg=C["text"], relief="flat",
-                padx=12, pady=6, cursor="hand2", activebackground=C["accent"],
-                command=lambda c=cmd: self._quick(c),
-            ).pack(side="left", padx=4)
-
-        # ── Footer toggles ──
         footer = tk.Frame(self.root, bg=C["bg"])
-        footer.pack(fill="x", padx=14, pady=(0, 8))
+        footer.pack(fill="x", padx=16, pady=(0, 12))
 
         self.auto_var = tk.BooleanVar(value=True)
-        tk.Checkbutton(footer, text="🔄 Auto Listen", variable=self.auto_var,
+        tk.Checkbutton(footer, text="Auto listen after I speak", variable=self.auto_var,
                        bg=C["bg"], fg=C["muted"], selectcolor=C["card2"],
                        activebackground=C["bg"], font=("Segoe UI", 9),
-                       command=lambda: setattr(self, "auto_listen", self.auto_var.get())).pack(side="left")
+                       command=lambda: setattr(self, "auto_listen", self.auto_var.get())).pack()
 
-        tk.Label(footer, text="  |  ", bg=C["bg"], fg=C["muted"]).pack(side="left")
-        tk.Label(footer, text="💡 Speak clearly — commands run automatically",
-                 bg=C["bg"], fg=C["green"], font=("Segoe UI", 9)).pack(side="left")
+        # Check if startup is already enabled
+        startup_file = Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup" / "JARVIS.bat"
+        self.startup_var = tk.BooleanVar(value=startup_file.exists())
+        tk.Checkbutton(footer, text="Launch JARVIS on Windows Startup", variable=self.startup_var,
+                       bg=C["bg"], fg=C["muted"], selectcolor=C["card2"],
+                       activebackground=C["bg"], font=("Segoe UI", 9),
+                       command=self._toggle_startup).pack(pady=(4, 0))
 
     def _set_status(self, text: str, color: str):
         self.status_dot.configure(text=f"● {text}", fg=color)
 
     def _animate_progress(self, active: bool):
         if not active:
-            self.progress.coords(self._progress_bar, 0, 0, 0, 3)
+            self.progress.coords(self._progress_bar, 0, 0, 0, 4)
             return
         w = self.progress.winfo_width() or 700
 
@@ -820,106 +969,146 @@ class JarvisApp:
             if p > w + 50:
                 self._animate_progress(True)
                 return
-            self.progress.coords(self._progress_bar, 0, 0, min(p, w), 3)
+            self.progress.coords(self._progress_bar, 0, 0, min(p, w), 4)
             self.root.after(18, lambda: step(p + 12))
 
         step()
 
     def _pulse_mic(self, on=True, step=0):
         if not on or not self.listening:
-            self.mic_btn.configure(bg=C["accent"])
+            self.mic_btn.configure(bg=C["mic_idle"])
             return
-        colors = [C["red"], "#f87171", C["red"], "#dc2626"]
+        colors = [C["mic_hot"], "#fb7185", C["mic_hot"], "#dc2626"]
         self.mic_btn.configure(bg=colors[step % len(colors)])
         self._pulse_id = self.root.after(250, lambda: self._pulse_mic(True, step + 1))
 
-    def _type_entry_to_screen(self):
-        text = self.entry.get().strip()
-        if text:
-            msg = type_on_screen(text)
-            self._add("JARVIS", msg)
+    def _is_echo_or_junk(self, text: str) -> bool:
+        """Ignore speaker echo / junk — not real user commands."""
+        t = re.sub(r"[^\w\s']", "", text.lower()).strip()
+        if len(t) < 4:
+            return True
+        junk = (
+            "thank you", "thanks for watching", "subscribe", "hello good",
+            "im jarvis", "just speak", "voice only", "tap mic",
+            "good morning", "good afternoon", "good evening",
+        )
+        if any(j in t for j in junk):
+            return True
+        if self._last_spoken:
+            spoken = re.sub(r"[^\w\s']", "", self._last_spoken.lower())
+            if t in spoken or (len(t) > 10 and spoken in t):
+                return True
+            tw, sw = set(t.split()), set(spoken.split())
+            if len(tw) >= 3 and len(tw & sw) / max(len(tw), 1) > 0.55:
+                return True
+        return False
 
     def _toggle_mic(self, auto=False):
         if self.listening:
             return
-        if self.speaking:
-            self.root.after(600, lambda: self._toggle_mic(auto))
+        if auto and time.time() < self._mic_ready_at:
+            wait_ms = int((self._mic_ready_at - time.time()) * 1000) + 200
+            self._auto_mic_after_id = self.root.after(max(wait_ms, 200), self._auto_mic)
             return
+        if self.speaking or self._working:
+            self._interrupt()
+            self.live_label.configure(text="Stopped — listening now...", fg=C["orange"])
+        clear_cancel()
         self.listening = True
-        self.mic_btn.configure(text="🔴")
-        self._set_status("LISTENING...", C["red"])
-        self.live_label.configure(text="🎤 Speak now! Watch the volume bars...", fg=C["accent2"])
+        self.mic_btn.configure(text="🔴", bg=C["mic_hot"])
+        self._set_status("LISTENING", C["red"])
+        self.live_label.configure(text="🎤 LISTENING — speak now!", fg=C["accent2"])
+        self.heard_label.configure(text="")
         self._animate_progress(True)
         self._pulse_mic(True)
-        self.entry.delete(0, tk.END)
-        threading.Thread(target=self._listen_and_send, args=(auto,), daemon=True).start()
+        listen_gen = self._task_gen
+        threading.Thread(target=self._listen_and_send, args=(auto, listen_gen), daemon=True).start()
 
-    def _listen_and_send(self, auto=False):
+    def _listen_and_send(self, auto=False, listen_gen=0):
         api_key = self.brain.api_key
+        text, err = "", ""
 
-        def on_live(msg):
-            self.root.after(0, lambda m=msg: self.live_label.configure(text=m, fg=C["accent2"]))
-            self.root.after(0, lambda m=msg: _update_entry(self.entry, m) if "Suna:" in m or "📝" in m else None)
+        def on_status(msg: str):
+            if "Heard:" in msg or "✅" in msg:
+                heard = msg.replace("✅ Heard:", "").replace("✅ Suna:", "").strip()
+                self.root.after(0, lambda h=heard: self.heard_label.configure(text=f'"{h}"'))
+            elif "Listening" in msg or "Recording" in msg or "█" in msg:
+                self.root.after(0, lambda m=msg: self.live_label.configure(text=m, fg=C["accent2"]))
+            elif "Processing" in msg:
+                self.root.after(0, lambda m=msg: self.live_label.configure(text=m, fg=C["orange"]))
+            else:
+                self.root.after(0, lambda m=msg: self.live_label.configure(text=m, fg=C["muted"]))
 
-        text, err = listen_and_type_live(
-            self.entry, self.root,
-            timeout_sec=8, lang=APP_LANG, api_key=api_key,
-        )
+        def should_stop():
+            return listen_gen != self._task_gen or not self.running
 
-        self.listening = False
-        self._pulse_mic(False)
-        self._animate_progress(False)
-        self.root.after(0, lambda: self.mic_btn.configure(text="🎤", bg=C["accent"]))
+        try:
+            text, err = listen_voice_only(
+                api_key, timeout_sec=12, lang=APP_LANG,
+                on_status=on_status, should_stop=should_stop,
+            )
+        finally:
+            if listen_gen == self._task_gen:
+                self.listening = False
+                self._pulse_mic(False)
+                self._animate_progress(False)
+                self.root.after(0, lambda: self.mic_btn.configure(text="🎤", bg=C["mic_idle"]))
 
-        if text:
+        if listen_gen != self._task_gen:
+            return
+
+        if text and not self._is_echo_or_junk(text):
             self.root.after(0, lambda t=text: self._on_voice_result(t))
-        else:
-            fail = err or L("Didn't hear anything", "Sunai nahi diya")
-            self.root.after(0, lambda: self.live_label.configure(text=f"❌ {fail}", fg=C["red"]))
-            self.root.after(0, lambda: self._set_status("Mic fail", C["red"]))
+        elif text and self._is_echo_or_junk(text):
+            self.root.after(0, lambda: self.live_label.configure(
+                text="Heard echo — speak again clearly", fg=C["orange"]))
+            self.root.after(0, lambda: self.heard_label.configure(text=""))
             if self.auto_listen:
-                self.root.after(3000, self._auto_mic)
+                self._auto_mic_after_id = self.root.after(2000, self._auto_mic)
+        elif err == "Interrupted":
+            pass
+        else:
+            fail = err or L("Didn't hear you — tap mic and speak louder", "Sunai nahi diya")
+            self.root.after(0, lambda: self.live_label.configure(text=fail, fg=C["red"]))
+            self.root.after(0, lambda: self.heard_label.configure(text=""))
+            self.root.after(0, lambda: self._set_status("Tap mic", C["orange"]))
+            if self.auto_listen:
+                self._auto_mic_after_id = self.root.after(2000, self._auto_mic)
 
     def _on_voice_result(self, text: str):
-        self.current_lang = APP_LANG
-        self.lang_label.configure(text="🇬🇧 English")
-
-        self.entry.delete(0, tk.END)
-        self.entry.insert(0, text)
-        self.live_label.configure(text=f'✅ Heard: "{text}"', fg=C["green"])
+        self.heard_label.configure(text=f'"{text}"')
+        self.live_label.configure(text="Got it — doing it now...", fg=C["green"])
         self._add("user_heard", text)
-        self._process(text)  # ALWAYS execute — no dictate block
-
-    def _quick(self, cmd):
-        self.entry.delete(0, "end")
-        self.entry.insert(0, cmd)
-        self._send()
-
-    def _send(self):
-        text = self.entry.get().strip()
-        if text and not text.startswith("🎤"):
-            self.entry.delete(0, "end")
-            self._process(text)
+        self._process(text)
 
     def _process(self, text: str):
+        self._interrupt()
+        clear_cancel()
+        task_gen = self._task_gen
         self.current_lang = APP_LANG
-        self.lang_label.configure(text="🇬🇧 English")
         self._add("You", text, user=True)
-        self.live_label.configure(text=f"⚡ Working on: {text[:50]}...", fg=C["orange"])
-        self._set_status("Working...", C["orange"])
+        self.live_label.configure(text=f"Working: {text[:60]}...", fg=C["orange"])
+        self._set_status("Working", C["orange"])
+        self._working = True
         self._animate_progress(True)
-        threading.Thread(target=self._reply, args=(text,), daemon=True).start()
+        threading.Thread(target=self._reply, args=(text, task_gen), daemon=True).start()
 
-    def _reply(self, text):
+    def _reply(self, text, task_gen):
+        if task_gen != self._task_gen:
+            return
         try:
             response, lang = self.brain.think(text)
             self.current_lang = lang
         except Exception as e:
             response, lang = f"Error: {e}", self.current_lang
 
+        if task_gen != self._task_gen:
+            return
+
         if not response or not str(response).strip():
             response = L("I heard you but couldn't respond. Try again.", "Sunai diya lekin jawab nahi mila. Dubara bolo.")
 
+        self._working = False
         self.root.after(0, lambda: self._animate_progress(False))
 
         if response == "GOODBYE_SIGNAL":
@@ -929,12 +1118,12 @@ class JarvisApp:
             self.root.after(500, self.root.destroy)
             return
 
-        is_action = any(w in response.lower() for w in ("opened", "open", "search", "created", "click", "saved", "closed", "done", "typed", "screenshot", "camera"))
+        is_action = any(w in response.lower() for w in ("opened", "open", "search", "created", "click", "saved", "closed", "done", "typed", "screenshot", "camera", "cancelled"))
         self.root.after(0, lambda r=response: self._add("JARVIS", r, action=is_action))
         self.root.after(0, lambda r=response: self.live_label.configure(
             text=f"✅ Done: {r[:70]}", fg=C["green"]))
         self.root.after(0, lambda: self._set_status("Ready", C["green"]))
-        threading.Thread(target=self._speak_and_listen, args=(response, lang), daemon=True).start()
+        threading.Thread(target=self._speak_and_listen, args=(response, lang, task_gen), daemon=True).start()
 
     def _add(self, sender, msg, user=False, action=False):
         self.chat.configure(state="normal")
@@ -956,6 +1145,46 @@ class JarvisApp:
 
         self.chat.configure(state="disabled")
         self.chat.see("end")
+
+    def _speak_sync(self, text: str, lang: str = "english"):
+        self.root.after(0, lambda: self._add("JARVIS", text))
+        speak(text, lang=lang, block=True)
+
+    def _ask_confirmation(self, description: str) -> bool:
+        result = []
+        event = threading.Event()
+
+        def show_dialog():
+            res = messagebox.askyesno(
+                "JARVIS Confirmation Gate",
+                f"JARVIS is about to perform a sensitive action:\n\n{description}\n\nDo you approve?"
+            )
+            result.append(res)
+            event.set()
+
+        self.root.after(0, show_dialog)
+        event.wait()
+        return result[0]
+
+    def _toggle_startup(self):
+        enable = self.startup_var.get()
+        msg = set_startup(enable)
+        self.root.after(0, lambda: self._add("sys", msg))
+
+    def _graceful_shutdown(self):
+        self._speak_sync("Closing open applications and saving your work, boss.")
+        
+        # Send Alt+F4 to gracefully close applications and Enter to auto-save default dialogs
+        for _ in range(5):
+            send_keys(0x12, 0x73) # Alt+F4
+            time.sleep(0.5)
+            send_keys(0x0D) # Enter
+            time.sleep(0.3)
+            
+        self._speak_sync("done boss everything i am going by bye")
+        time.sleep(1.5)
+        subprocess.run("shutdown /s /t 10", shell=True)
+        self.root.after(0, self._on_close)
 
 
 if __name__ == "__main__":

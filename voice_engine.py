@@ -26,6 +26,31 @@ VOICES = {
 }
 
 _speaking_lock = threading.Lock()
+_stop_speak = threading.Event()
+_play_proc: subprocess.Popen | None = None
+
+
+def stop_speaking():
+    """Stop any in-progress TTS immediately."""
+    _stop_speak.set()
+    global _play_proc
+    proc = _play_proc
+    if proc and proc.poll() is None:
+        try:
+            proc.terminate()
+            proc.wait(timeout=1)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+    _play_proc = None
+    try:
+        import win32com.client
+        sp = win32com.client.Dispatch("SAPI.SpVoice")
+        sp.Speak("", 2)
+    except Exception:
+        pass
 
 
 def ensure_voice_deps() -> bool:
@@ -40,7 +65,10 @@ def ensure_voice_deps() -> bool:
             return False
 
 
-def _play_mp3(path: str):
+def _play_mp3(path: str) -> bool:
+    global _play_proc
+    if _stop_speak.is_set():
+        return False
     uri = Path(path).resolve().as_uri()
     ps = f"""
 Add-Type -AssemblyName presentationCore
@@ -53,7 +81,23 @@ Start-Sleep -Seconds ($p.NaturalDuration.TimeSpan.TotalSeconds + 0.5)
 $p.Stop()
 $p.Close()
 """
-    subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps], timeout=90, capture_output=True)
+    import time
+    _play_proc = subprocess.Popen(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    while _play_proc.poll() is None:
+        if _stop_speak.is_set():
+            try:
+                _play_proc.terminate()
+            except Exception:
+                pass
+            _play_proc = None
+            return False
+        time.sleep(0.08)
+    _play_proc = None
+    return not _stop_speak.is_set()
 
 
 async def _edge_save(text: str, voice: str, path: str, rate: str = "+8%"):
@@ -69,17 +113,25 @@ def speak_neural(text: str, lang: str = "english", block: bool = True) -> bool:
         return False
     voice = VOICES.get(lang, VOICES["english_us"] if lang == "english" else VOICES["english"])
     try:
+        _stop_speak.clear()
         with _speaking_lock:
             for chunk in _split_text(text, 280):
+                if _stop_speak.is_set():
+                    return False
                 path = tempfile.mktemp(suffix=".mp3")
                 asyncio.run(_edge_save(chunk, voice, path))
                 if block:
-                    _play_mp3(path)
+                    if not _play_mp3(path):
+                        try:
+                            os.remove(path)
+                        except Exception:
+                            pass
+                        return False
                 try:
                     os.remove(path)
                 except Exception:
                     pass
-        return True
+        return not _stop_speak.is_set()
     except Exception:
         return False
 
@@ -147,6 +199,7 @@ def listen_whisper(
     duration: int = 8,
     lang_hint: str = "auto",
     on_status: Optional[Callable[[str], None]] = None,
+    should_stop: Optional[Callable[[], bool]] = None,
 ) -> tuple[str, str]:
     """
     Record + Groq Whisper transcribe.
@@ -160,9 +213,17 @@ def listen_whisper(
     try:
         if on_status:
             on_status(_status_msg(lang_key, "mic_on"))
-        ok, rec_err = _record_wav(wav_path, duration, on_status, lang_key)
+        ok, rec_err = _record_wav_vad(
+            wav_path, max_duration=float(duration), on_status=on_status,
+            lang=lang_key, should_stop=should_stop,
+        )
         if not ok:
+            if should_stop and should_stop():
+                return "", "Interrupted"
             return "", rec_err or _status_msg(lang_key, "no_voice")
+
+        if should_stop and should_stop():
+            return "", "Interrupted"
 
         if on_status:
             on_status(_status_msg(lang_key, "thinking"))
@@ -180,7 +241,69 @@ def listen_whisper(
             pass
 
 
-def _record_wav(path: str, duration: int, on_status=None, lang: str = "english") -> tuple[bool, str]:
+def _record_wav_vad(
+    path: str,
+    max_duration: float = 12.0,
+    silence_sec: float = 1.0,
+    on_status=None,
+    lang: str = "english",
+    should_stop=None,
+) -> tuple[bool, str]:
+    """Record until user stops speaking (voice activity detection)."""
+    try:
+        import numpy as np
+        import sounddevice as sd
+        import wave
+
+        fs = 16000
+        chunk_ms = 0.1
+        block = int(chunk_ms * fs)
+        chunks = []
+        heard_voice = False
+        silence_chunks = 0
+        silence_needed = max(3, int(silence_sec / chunk_ms))
+        max_chunks = int(max_duration / chunk_ms)
+
+        if on_status:
+            on_status(_status_msg(lang, "recording"))
+
+        with sd.InputStream(samplerate=fs, channels=1, dtype="int16") as stream:
+            for i in range(max_chunks):
+                if should_stop and should_stop():
+                    return False, "Interrupted"
+                data, _ = stream.read(block)
+                chunks.append(data.copy())
+                level = int(np.max(np.abs(data)))
+                if level > 180:
+                    heard_voice = True
+                    silence_chunks = 0
+                elif heard_voice:
+                    silence_chunks += 1
+                    if silence_chunks >= silence_needed:
+                        break
+                if on_status and i % 4 == 0:
+                    bars = "█" * min(level // 400, 12)
+                    on_status(f"{_status_msg(lang, 'listening')}{bars}")
+
+        if not chunks:
+            return False, _status_msg(lang, "no_voice")
+
+        audio = np.concatenate(chunks, axis=0)
+        if not heard_voice or int(np.max(np.abs(audio))) < 150:
+            return False, _status_msg(lang, "no_voice")
+
+        with wave.open(path, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(fs)
+            wf.writeframes(audio.tobytes())
+        return True, ""
+    except Exception as e:
+        return False, f"Mic error: {e}"
+
+
+def _record_wav(path: str, duration: int, on_status=None, lang: str = "english", should_stop=None) -> tuple[bool, str]:
+    """Fixed-duration fallback recording."""
     try:
         import numpy as np
         import sounddevice as sd
@@ -196,10 +319,12 @@ def _record_wav(path: str, duration: int, on_status=None, lang: str = "english")
 
         with sd.InputStream(samplerate=fs, channels=1, dtype="int16") as stream:
             for i in range(int(duration / 0.2)):
+                if should_stop and should_stop():
+                    return False, "Interrupted"
                 data, _ = stream.read(block)
                 chunks.append(data.copy())
                 level = int(np.max(np.abs(data)))
-                if level > 300:
+                if level > 250:
                     heard_voice = True
                 if on_status and i % 3 == 0:
                     bars = "█" * min(level // 500, 10)
@@ -318,21 +443,32 @@ def listen_best(
     lang: str = "auto",
     on_status: Optional[Callable[[str], None]] = None,
     on_partial: Optional[Callable[[str], None]] = None,
+    should_stop: Optional[Callable[[], bool]] = None,
 ) -> tuple[str, str]:
-    """Try Whisper first, then Windows SAPI. Returns (text, error)."""
+    """Groq Whisper (VAD) first — avoids hearing JARVIS own voice via Windows SAPI."""
     lang_hint = "english" if lang in ("english", "en") else ("hindi" if lang in ("auto", "hindi") else "english")
 
     if api_key and api_key.startswith("gsk_"):
-        text, err = listen_whisper(api_key, duration=timeout_sec, lang_hint=lang_hint, on_status=on_status)
+        text, err = listen_whisper(
+            api_key, duration=timeout_sec, lang_hint=lang_hint,
+            on_status=on_status, should_stop=should_stop,
+        )
         if text:
             return text, ""
+        if should_stop and should_stop():
+            return "", "Interrupted"
+
+    if should_stop and should_stop():
+        return "", "Interrupted"
 
     if on_status:
         on_status(_status_msg(lang_hint, "win_mic"))
     text = listen_windows_sapi(timeout_sec, lang_hint, on_partial=on_partial)
     if text:
+        if on_status:
+            on_status(f"{_status_msg(lang_hint, 'heard')}{text}")
         return text, ""
-    return "", _status_msg(lang_hint, "nothing") + " — check mic and try again"
+    return "", _status_msg(lang_hint, "nothing") + " — speak louder or check mic"
 
 
 def list_voices() -> dict:
