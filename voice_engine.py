@@ -272,7 +272,7 @@ def _get_best_input_device() -> int:
 def _record_wav_vad(
     path: str,
     max_duration: float = 12.0,
-    silence_sec: float = 1.0,
+    silence_sec: float = 0.8,
     on_status=None,
     lang: str = "english",
     should_stop=None,
@@ -303,7 +303,7 @@ def _record_wav_vad(
                 data, _ = stream.read(block)
                 chunks.append(data.copy())
                 level = int(np.max(np.abs(data)))
-                if level > 45:
+                if level > 250:
                     heard_voice = True
                     silence_chunks = 0
                 elif heard_voice:
@@ -318,7 +318,7 @@ def _record_wav_vad(
             return False, _status_msg(lang, "no_voice")
 
         audio = np.concatenate(chunks, axis=0)
-        if not heard_voice or int(np.max(np.abs(audio))) < 35:
+        if not heard_voice or int(np.max(np.abs(audio))) < 150:
             return False, _status_msg(lang, "no_voice")
 
         with wave.open(path, "wb") as wf:
