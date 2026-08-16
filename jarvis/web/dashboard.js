@@ -75,62 +75,20 @@ async function submitGoal(customPrompt = null) {
     const goal = customPrompt || inputEl.value.trim();
     if (!goal) return;
 
-    // Append user input bubble to chat
+    // Append user bubble to chat
     addMessage("You", goal, true);
     inputEl.value = "";
 
-    // Insert an initial JARVIS thinking placeholder bubble
-    const thinkingId = "think-" + Math.random().toString(36).substring(2, 9);
-    const thinkingDiv = document.createElement("div");
-    thinkingDiv.className = "message jarvis";
-    thinkingDiv.id = thinkingId;
-    thinkingDiv.innerHTML = `
-        <div class="msg-avatar">🤖</div>
-        <div class="msg-content-wrapper">
-            <div class="msg-header">
-                <span class="msg-author">JARVIS</span>
-                <span class="msg-time">${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-            </div>
-            <div class="msg-body">
-                <p class="processing-text">🤖 Thinking... Analyzing intent and building plan...</p>
-            </div>
-        </div>
-    `;
-    document.getElementById("chatHistory").appendChild(thinkingDiv);
-    document.getElementById("chatHistory").scrollTop = document.getElementById("chatHistory").scrollHeight;
-
+    // Fire intent to backend — WebSocket will deliver the reply
     try {
-        const response = await fetch(`${API_BASE}/v1/intent`, {
+        await fetch(`${API_BASE}/v1/intent`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ user_goal: goal, execute_immediately: true })
         });
-
-        if (!response.ok) throw new Error("Failed to process intent");
-        const data = await response.json();
-        activePlanId = data.plan_id;
-
-        // Replace the thinking bubble with the actual execution plan
-        thinkingDiv.remove();
-        
-        let planHtml = `
-            <p>I have generated a plan with <strong>${data.step_count} step(s)</strong> for your request:</p>
-            <div class="msg-plan-box">
-                <div class="msg-plan-title">🧠 Plan DAG: ${escapeHTML(goal.substring(0, 40))}</div>
-                <div class="msg-plan-steps" id="plan-steps-${activePlanId}">
-                    ${renderInitialPlanSteps(data.plan)}
-                </div>
-            </div>
-        `;
-        addMessage("JARVIS", planHtml);
-        
-        // Add activity entry
         addRecentActivity(goal);
-        
-        startPlanPolling(activePlanId);
     } catch (err) {
-        thinkingDiv.remove();
-        addMessage("JARVIS", `⚠️ Error executing goal: ${err.message}`);
+        addMessage("JARVIS", `⚠️ Could not reach JARVIS: ${err.message}`);
     }
 }
 
