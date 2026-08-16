@@ -7,9 +7,14 @@ echo    JARVIS AI - Starting...
 echo    English Voice Assistant
 echo  ========================================
 echo.
-echo  Installing voice engine (first time only)...
-python -m pip install -r requirements-voice.txt -q 2>nul
-echo.
+
+python -c "import sounddevice, edge_tts" 2>nul
+if errorlevel 1 (
+    echo  Installing voice engine (first time only)...
+    python -m pip install -r requirements-voice.txt -q
+    echo.
+)
+
 python jarvis.py
 if errorlevel 1 (
     echo.

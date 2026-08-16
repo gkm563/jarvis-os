@@ -241,6 +241,34 @@ def listen_whisper(
             pass
 
 
+def _get_best_input_device() -> int:
+    """Helper to detect and return the best input device (built-in Microphone Array fallback)."""
+    try:
+        import sounddevice as sd
+        devices = sd.query_devices()
+        default_idx = sd.default.device[0]
+        
+        default_name = ""
+        if default_idx is not None and default_idx >= 0:
+            default_name = devices[default_idx]['name'].lower()
+            
+        # If default device is a bluetooth headset/hands-free, fallback to built-in Microphone Array
+        if any(w in default_name for w in ["headset", "hands-free", "handsfree", "boult", "bluetooth"]):
+            for idx, d in enumerate(devices):
+                if d['max_input_channels'] > 0:
+                    name = d['name'].lower()
+                    if "microphone array" in name and "realtek" in name:
+                        return idx
+            for idx, d in enumerate(devices):
+                if d['max_input_channels'] > 0:
+                    name = d['name'].lower()
+                    if "microphone array" in name:
+                        return idx
+        return default_idx
+    except Exception:
+        return None
+
+
 def _record_wav_vad(
     path: str,
     max_duration: float = 12.0,
@@ -267,7 +295,8 @@ def _record_wav_vad(
         if on_status:
             on_status(_status_msg(lang, "recording"))
 
-        with sd.InputStream(samplerate=fs, channels=1, dtype="int16") as stream:
+        device_idx = _get_best_input_device()
+        with sd.InputStream(samplerate=fs, channels=1, dtype="int16", device=device_idx) as stream:
             for i in range(max_chunks):
                 if should_stop and should_stop():
                     return False, "Interrupted"
@@ -317,7 +346,8 @@ def _record_wav(path: str, duration: int, on_status=None, lang: str = "english",
         if on_status:
             on_status(_status_msg(lang, "recording"))
 
-        with sd.InputStream(samplerate=fs, channels=1, dtype="int16") as stream:
+        device_idx = _get_best_input_device()
+        with sd.InputStream(samplerate=fs, channels=1, dtype="int16", device=device_idx) as stream:
             for i in range(int(duration / 0.2)):
                 if should_stop and should_stop():
                     return False, "Interrupted"
