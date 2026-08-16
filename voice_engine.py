@@ -274,7 +274,7 @@ def _record_wav_vad(
                 data, _ = stream.read(block)
                 chunks.append(data.copy())
                 level = int(np.max(np.abs(data)))
-                if level > 180:
+                if level > 45:
                     heard_voice = True
                     silence_chunks = 0
                 elif heard_voice:
@@ -282,14 +282,14 @@ def _record_wav_vad(
                     if silence_chunks >= silence_needed:
                         break
                 if on_status and i % 4 == 0:
-                    bars = "█" * min(level // 400, 12)
+                    bars = "█" * min(level // 300, 12)
                     on_status(f"{_status_msg(lang, 'listening')}{bars}")
 
         if not chunks:
             return False, _status_msg(lang, "no_voice")
 
         audio = np.concatenate(chunks, axis=0)
-        if not heard_voice or int(np.max(np.abs(audio))) < 150:
+        if not heard_voice or int(np.max(np.abs(audio))) < 35:
             return False, _status_msg(lang, "no_voice")
 
         with wave.open(path, "wb") as wf:
@@ -324,14 +324,14 @@ def _record_wav(path: str, duration: int, on_status=None, lang: str = "english",
                 data, _ = stream.read(block)
                 chunks.append(data.copy())
                 level = int(np.max(np.abs(data)))
-                if level > 250:
+                if level > 45:
                     heard_voice = True
                 if on_status and i % 3 == 0:
-                    bars = "█" * min(level // 500, 10)
+                    bars = "█" * min(level // 350, 10)
                     on_status(f"{_status_msg(lang, 'listening')}{bars}")
 
         audio = np.concatenate(chunks, axis=0)
-        if not heard_voice and np.max(np.abs(audio)) < 200:
+        if not heard_voice and np.max(np.abs(audio)) < 35:
             return False, _status_msg(lang, "no_voice")
 
         with wave.open(path, "wb") as wf:

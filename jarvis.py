@@ -759,10 +759,19 @@ def get_greeting(lang: str = "english") -> str:
 
 # UI Theme — clean voice-first
 C = {
-    "bg": "#070b14", "card": "#0f1629", "card2": "#151e33",
-    "accent": "#7c6cff", "accent2": "#5eead4", "green": "#34d399",
-    "red": "#f87171", "orange": "#fbbf24", "text": "#f1f5f9", "muted": "#94a3b8",
-    "user": "#c4b5fd", "jarvis": "#67e8f9", "mic_idle": "#4f46e5", "mic_hot": "#ef4444",
+    "bg": "#0B0F19",       # Deep slate black
+    "card": "#161D30",     # Dark card background
+    "card2": "#1F2942",    # Medium card background
+    "accent": "#6366F1",   # Indigo-500
+    "accent_light": "#818CF8", # Indigo-400
+    "cyan": "#06B6D4",     # Cyan-500
+    "green": "#10B981",    # Emerald-500
+    "red": "#EF4444",      # Red-500
+    "orange": "#F59E0B",   # Amber-500
+    "text": "#F8FAFC",     # Slate-50
+    "muted": "#64748B",    # Slate-500
+    "user": "#A5B4FC",     # Indigo light
+    "jarvis": "#22D3EE",   # Cyan light
 }
 
 
@@ -832,8 +841,10 @@ class JarvisApp:
             return
         self._last_spoken = text
         self.speaking = True
+        self.root.after(0, lambda: self._set_orb_state("speaking"))
         speak(text, lang=lang, block=True)
         self.speaking = False
+        self.root.after(0, lambda: self._set_orb_state("idle"))
         if task_gen != self._task_gen:
             return
         # Wait so mic does NOT hear JARVIS own voice from speakers
@@ -869,76 +880,91 @@ class JarvisApp:
 
     def _build_ui(self):
         # Header
-        header = tk.Frame(self.root, bg=C["card"], height=52)
+        header = tk.Frame(self.root, bg=C["card"], height=56)
         header.pack(fill="x")
         header.pack_propagate(False)
 
-        tk.Label(header, text="JARVIS", font=("Segoe UI", 20, "bold"),
-                 bg=C["card"], fg=C["accent2"]).pack(side="left", padx=18, pady=10)
-        tk.Label(header, text="Voice Only", font=("Segoe UI", 10),
-                 bg=C["card"], fg=C["muted"]).pack(side="left", pady=14)
+        # Draw a line border under header
+        border = tk.Frame(self.root, bg=C["card_border"], height=1)
+        border.pack(fill="x")
+
+        tk.Label(header, text="JARVIS OS", font=("Segoe UI", 18, "bold"),
+                 bg=C["card"], fg=C["cyan"]).pack(side="left", padx=18, pady=10)
+        tk.Label(header, text="v3.0.0 Pro", font=("Segoe UI", 9, "bold"),
+                 bg=C["card2"], fg=C["text"], padx=6, pady=2).pack(side="left", padx=4, pady=16)
 
         self.status_dot = tk.Label(header, text="● Ready", font=("Segoe UI", 10, "bold"),
                                    bg=C["card"], fg=C["green"])
         self.status_dot.pack(side="right", padx=16)
 
-        tk.Button(header, text="⚙", font=("Segoe UI", 12), bg=C["card2"], fg=C["muted"],
-                  relief="flat", padx=8, command=self._settings).pack(side="right", padx=8, pady=10)
+        tk.Button(header, text="⚙ Settings", font=("Segoe UI", 9), bg=C["card2"], fg=C["text"],
+                  relief="flat", bd=0, padx=10, command=self._settings, cursor="hand2",
+                  activebackground=C["accent"]).pack(side="right", padx=8, pady=12)
 
         # Chat
         chat_wrap = tk.Frame(self.root, bg=C["bg"])
         chat_wrap.pack(fill="both", expand=True, padx=16, pady=(12, 8))
 
         self.chat = scrolledtext.ScrolledText(
-            chat_wrap, wrap=tk.WORD, font=("Segoe UI", 13),
+            chat_wrap, wrap=tk.WORD, font=("Segoe UI", 12),
             bg=C["card"], fg=C["text"], relief="flat", padx=18, pady=16,
-            state="disabled", insertbackground=C["accent2"],
+            state="disabled", insertbackground=C["cyan"],
             selectbackground=C["accent"], borderwidth=0,
+            highlightbackground=C["card_border"], highlightthickness=1
         )
         self.chat.pack(fill="both", expand=True)
-        self.chat.tag_config("user", foreground=C["user"], font=("Segoe UI", 13, "bold"))
-        self.chat.tag_config("jarvis", foreground=C["jarvis"])
-        self.chat.tag_config("action", foreground=C["green"], font=("Segoe UI", 12, "italic"))
-        self.chat.tag_config("sys", foreground=C["muted"], font=("Segoe UI", 11, "italic"))
+
+        # Align text bubbles: user text bubble is shifted right, jarvis bubble is shifted left
+        self.chat.tag_config("user", foreground="#FFFFFF", lmargin1=80, lmargin2=80, rmargin=10, font=("Segoe UI", 12, "bold"))
+        self.chat.tag_config("jarvis", foreground=C["cyan"], lmargin1=10, lmargin2=10, rmargin=80)
+        self.chat.tag_config("action", foreground=C["green"], font=("Segoe UI", 11, "italic"))
+        self.chat.tag_config("sys", foreground=C["muted"], font=("Segoe UI", 10, "italic"))
 
         # Live status
-        status_frame = tk.Frame(self.root, bg=C["card2"], padx=20, pady=14)
+        status_frame = tk.Frame(self.root, bg=C["card2"], padx=20, pady=14, 
+                                highlightbackground=C["card_border"], highlightthickness=1)
         status_frame.pack(fill="x", padx=16, pady=(0, 8))
 
         self.live_label = tk.Label(
             status_frame,
-            text="Just speak — I listen and do what you say",
-            font=("Segoe UI", 13, "bold"), bg=C["card2"], fg=C["text"],
-            anchor="center", wraplength=640,
+            text="Speak your command or check setting options",
+            font=("Segoe UI", 12, "bold"), bg=C["card2"], fg=C["text"],
+            anchor="center", wraplength=400,
         )
         self.live_label.pack(fill="x")
 
         self.heard_label = tk.Label(
-            status_frame, text="", font=("Segoe UI", 12),
-            bg=C["card2"], fg=C["accent2"], anchor="center", wraplength=640,
+            status_frame, text="", font=("Segoe UI", 11, "italic"),
+            bg=C["card2"], fg=C["accent_light"], anchor="center", wraplength=400,
         )
         self.heard_label.pack(fill="x", pady=(6, 0))
 
-        self.progress = tk.Canvas(status_frame, height=4, bg=C["card2"], highlightthickness=0)
+        self.progress = tk.Canvas(status_frame, height=3, bg=C["card2"], highlightthickness=0)
         self.progress.pack(fill="x", pady=(10, 0))
-        self._progress_bar = self.progress.create_rectangle(0, 0, 0, 4, fill=C["accent"], width=0)
+        self._progress_bar = self.progress.create_rectangle(0, 0, 0, 3, fill=C["cyan"], width=0)
 
-        # Big mic area — voice only, no typing
+        # Big mic area — Siri-like glowing Voice Orb
         mic_area = tk.Frame(self.root, bg=C["bg"], pady=8)
-        mic_area.pack(fill="x", padx=16, pady=(0, 12))
+        mic_area.pack(fill="x", padx=16, pady=(0, 10))
 
-        self.mic_btn = tk.Button(
-            mic_area, text="🎤", font=("Segoe UI", 36),
-            bg=C["mic_idle"], fg="white", relief="flat",
-            width=4, height=1, cursor="hand2",
-            activebackground=C["accent"],
-            command=lambda: self._toggle_mic(auto=False),
-        )
-        self.mic_btn.pack(pady=(4, 8))
+        self.mic_canvas = tk.Canvas(mic_area, width=110, height=110, bg=C["bg"], highlightthickness=0)
+        self.mic_canvas.pack(pady=4)
 
-        tk.Label(mic_area, text="Tap mic → speak your command → I do it",
-                 font=("Segoe UI", 10), bg=C["bg"], fg=C["muted"]).pack()
+        # Draw a beautiful pulsing interactive voice orb
+        self.mic_ring = self.mic_canvas.create_oval(10, 10, 100, 100, fill=C["card"], outline=C["accent"], width=3)
+        self.mic_orb = self.mic_canvas.create_oval(22, 22, 88, 88, fill=C["accent"], outline="", width=0)
+        self.mic_icon = self.mic_canvas.create_text(55, 55, text="🎤", font=("Segoe UI", 26), fill="white")
 
+        # Bind hover and click events
+        for item in (self.mic_ring, self.mic_orb, self.mic_icon):
+            self.mic_canvas.tag_bind(item, "<Button-1>", lambda e: self._toggle_mic(auto=False))
+            self.mic_canvas.tag_bind(item, "<Enter>", lambda e: self.mic_canvas.itemconfig(self.mic_ring, outline=C["accent_light"], width=4))
+            self.mic_canvas.tag_bind(item, "<Leave>", lambda e: self.mic_canvas.itemconfig(self.mic_ring, outline=C["accent"], width=3))
+
+        tk.Label(mic_area, text="Tap Voice Orb to talk to JARVIS",
+                 font=("Segoe UI", 9), bg=C["bg"], fg=C["muted"]).pack()
+
+        # Footer Checkbuttons
         footer = tk.Frame(self.root, bg=C["bg"])
         footer.pack(fill="x", padx=16, pady=(0, 12))
 
@@ -948,7 +974,6 @@ class JarvisApp:
                        activebackground=C["bg"], font=("Segoe UI", 9),
                        command=lambda: setattr(self, "auto_listen", self.auto_var.get())).pack()
 
-        # Check if startup is already enabled
         startup_file = Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup" / "JARVIS.bat"
         self.startup_var = tk.BooleanVar(value=startup_file.exists())
         tk.Checkbutton(footer, text="Launch JARVIS on Windows Startup", variable=self.startup_var,
@@ -958,6 +983,26 @@ class JarvisApp:
 
     def _set_status(self, text: str, color: str):
         self.status_dot.configure(text=f"● {text}", fg=color)
+
+    def _set_orb_state(self, state: str):
+        if not hasattr(self, "mic_canvas"):
+            return
+        if state == "idle":
+            self.mic_canvas.itemconfig(self.mic_orb, fill=C["accent"])
+            self.mic_canvas.itemconfig(self.mic_ring, outline=C["accent"], width=3)
+            self.mic_canvas.itemconfig(self.mic_icon, text="🎤")
+        elif state == "listening":
+            self.mic_canvas.itemconfig(self.mic_orb, fill=C["red"])
+            self.mic_canvas.itemconfig(self.mic_ring, outline=C["red"], width=4)
+            self.mic_canvas.itemconfig(self.mic_icon, text="🔴")
+        elif state == "thinking":
+            self.mic_canvas.itemconfig(self.mic_orb, fill=C["orange"])
+            self.mic_canvas.itemconfig(self.mic_ring, outline=C["orange"], width=3)
+            self.mic_canvas.itemconfig(self.mic_icon, text="⏳")
+        elif state == "speaking":
+            self.mic_canvas.itemconfig(self.mic_orb, fill=C["cyan"])
+            self.mic_canvas.itemconfig(self.mic_ring, outline=C["cyan"], width=3)
+            self.mic_canvas.itemconfig(self.mic_icon, text="🔊")
 
     def _animate_progress(self, active: bool):
         if not active:
@@ -976,10 +1021,12 @@ class JarvisApp:
 
     def _pulse_mic(self, on=True, step=0):
         if not on or not self.listening:
-            self.mic_btn.configure(bg=C["mic_idle"])
+            self._set_orb_state("idle")
             return
-        colors = [C["mic_hot"], "#fb7185", C["mic_hot"], "#dc2626"]
-        self.mic_btn.configure(bg=colors[step % len(colors)])
+        colors_orb = [C["red"], "#fb7185", C["red"], "#dc2626"]
+        colors_ring = ["#fca5a5", C["red"], "#fca5a5", "#b91c1c"]
+        self.mic_canvas.itemconfig(self.mic_orb, fill=colors_orb[step % len(colors_orb)])
+        self.mic_canvas.itemconfig(self.mic_ring, outline=colors_ring[step % len(colors_ring)], width=3 + (step % 2) * 2)
         self._pulse_id = self.root.after(250, lambda: self._pulse_mic(True, step + 1))
 
     def _is_echo_or_junk(self, text: str) -> bool:
@@ -1015,7 +1062,7 @@ class JarvisApp:
             self.live_label.configure(text="Stopped — listening now...", fg=C["orange"])
         clear_cancel()
         self.listening = True
-        self.mic_btn.configure(text="🔴", bg=C["mic_hot"])
+        self._set_orb_state("listening")
         self._set_status("LISTENING", C["red"])
         self.live_label.configure(text="🎤 LISTENING — speak now!", fg=C["accent2"])
         self.heard_label.configure(text="")
@@ -1052,7 +1099,7 @@ class JarvisApp:
                 self.listening = False
                 self._pulse_mic(False)
                 self._animate_progress(False)
-                self.root.after(0, lambda: self.mic_btn.configure(text="🎤", bg=C["mic_idle"]))
+                self.root.after(0, lambda: self._set_orb_state("idle"))
 
         if listen_gen != self._task_gen:
             return
@@ -1096,6 +1143,7 @@ class JarvisApp:
     def _reply(self, text, task_gen):
         if task_gen != self._task_gen:
             return
+        self.root.after(0, lambda: self._set_orb_state("thinking"))
         try:
             response, lang = self.brain.think(text)
             self.current_lang = lang
@@ -1103,6 +1151,7 @@ class JarvisApp:
             response, lang = f"Error: {e}", self.current_lang
 
         if task_gen != self._task_gen:
+            self.root.after(0, lambda: self._set_orb_state("idle"))
             return
 
         if not response or not str(response).strip():
@@ -1110,6 +1159,7 @@ class JarvisApp:
 
         self._working = False
         self.root.after(0, lambda: self._animate_progress(False))
+        self.root.after(0, lambda: self._set_orb_state("idle"))
 
         if response == "GOODBYE_SIGNAL":
             bye = L("Goodbye!", "Namaste! Alvida!")
@@ -1148,7 +1198,9 @@ class JarvisApp:
 
     def _speak_sync(self, text: str, lang: str = "english"):
         self.root.after(0, lambda: self._add("JARVIS", text))
+        self.root.after(0, lambda: self._set_orb_state("speaking"))
         speak(text, lang=lang, block=True)
+        self.root.after(0, lambda: self._set_orb_state("idle"))
 
     def _ask_confirmation(self, description: str) -> bool:
         result = []
