@@ -762,6 +762,7 @@ C = {
     "bg": "#0B0F19",       # Deep slate black
     "card": "#161D30",     # Dark card background
     "card2": "#1F2942",    # Medium card background
+    "card_border": "#24324F", # Subtle border/divider line
     "accent": "#6366F1",   # Indigo-500
     "accent_light": "#818CF8", # Indigo-400
     "cyan": "#06B6D4",     # Cyan-500
