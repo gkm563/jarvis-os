@@ -29,7 +29,7 @@ class DesktopControlAgent(AbstractAgent):
 
     @property
     def capabilities(self) -> List[str]:
-        return ["launch_app", "close_app", "focus_window", "snap_window", "system_state"]
+        return ["launch_app", "close_app", "focus_window", "snap_window", "system_state", "camera_take_photo"]
 
     async def execute(self, action: AgentAction) -> ExecutionResult:
         """Executes a desktop control action."""
@@ -60,6 +60,10 @@ class DesktopControlAgent(AbstractAgent):
             elif action_type == "system_state":
                 state = params.get("state", "lock")
                 return await self._system_state(state)
+
+            elif action_type == "camera_take_photo":
+                filepath = params.get("filepath", "gkm making food.jpg")
+                return await self._camera_take_photo(filepath)
 
             return ExecutionResult(success=False, error_message=f"Unhandled action type '{action_type}'")
 
@@ -115,4 +119,76 @@ class DesktopControlAgent(AbstractAgent):
         logger.info(f"Executing system power state command: '{state}'")
         if state == "lock":
             subprocess.run("rundll32.exe user32.dll,LockWorkStation", shell=True)
+        elif state == "shutdown":
+            subprocess.run("shutdown /s /t 10", shell=True)
         return ExecutionResult(success=True, data={"state": state, "status": "executed"})
+
+    async def _camera_take_photo(self, filepath: str) -> ExecutionResult:
+        """Grabs a frame from default webcam and saves it with screenshot fallback."""
+        logger.info(f"Taking photo from webcam, saving to '{filepath}'")
+        try:
+            import cv2
+            import time
+            
+            # Start camera capture
+            cap = cv2.VideoCapture(0)
+            if not cap.isOpened():
+                raise Exception("Webcam could not be opened")
+            
+            # Allow camera to warm up
+            time.sleep(1.0)
+            
+            # Show camera feed for 4 seconds so they can position themselves
+            start_time = time.time()
+            frame = None
+            while time.time() - start_time < 4.0:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                
+                # Copy frame to put text guide overlay
+                guide_frame = frame.copy()
+                cv2.putText(
+                    guide_frame, 
+                    "Position yourself in the center! Capturing in 4s...", 
+                    (20, 40), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 
+                    0.7, 
+                    (0, 255, 0), 
+                    2
+                )
+                cv2.imshow("JARVIS Camera Guide", guide_frame)
+                if cv2.waitKey(50) & 0xFF == 27:  # Esc key
+                    break
+            
+            # Capture final frame
+            ret, final_frame = cap.read()
+            cap.release()
+            cv2.destroyAllWindows()
+            
+            if not ret or final_frame is None:
+                raise Exception("Failed to capture frame from webcam")
+            
+            # Save the final frame
+            abs_path = os.path.abspath(filepath)
+            os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+            cv2.imwrite(abs_path, final_frame)
+            
+            return ExecutionResult(
+                success=True,
+                data={"filepath": filepath, "status": "captured", "full_path": abs_path}
+            )
+        except Exception as e:
+            logger.warning(f"Webcam photo failed: {e}. Falling back to screenshot.")
+            try:
+                from PIL import ImageGrab
+                abs_path = os.path.abspath(filepath)
+                os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+                shot = ImageGrab.grab()
+                shot.save(abs_path)
+                return ExecutionResult(
+                    success=True, 
+                    data={"filepath": filepath, "status": "screenshot_fallback", "full_path": abs_path, "error": str(e)}
+                )
+            except Exception as ex:
+                return ExecutionResult(success=False, error_message=f"Camera failed and fallback failed: {str(ex)}")
