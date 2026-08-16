@@ -298,51 +298,57 @@ function addRecentActivity(goal) {
 
 function initSparklines() {
     const configs = [
-        { id: "cpuSparkline", color: "#00f0ff", baseVal: 23, idVal: "cpuValue", unit: "%" },
-        { id: "memSparkline", color: "#7000ff", baseVal: 42, idVal: "memValue", unit: "%" },
-        { id: "diskSparkline", color: "#10b981", baseVal: 68, idVal: "diskValue", unit: "%" },
-        { id: "netSparkline", color: "#38bdf8", baseVal: 156, idVal: "netValue", unit: " Mbps" }
+        { id: "cpuSparkline", color: "#00f0ff", key: "cpu", idVal: "cpuValue", unit: "%", max: 100 },
+        { id: "memSparkline", color: "#7000ff", key: "memory", idVal: "memValue", unit: "%", max: 100 },
+        { id: "diskSparkline", color: "#10b981", key: "disk", idVal: "diskValue", unit: "%", max: 100 },
+        { id: "netSparkline", color: "#38bdf8", key: "network", idVal: "netValue", unit: " Mbps", max: 100 }
     ];
     
+    const histories = {};
     configs.forEach(cfg => {
-        const canvas = document.getElementById(cfg.id);
-        if (!canvas) return;
-        
-        const ctx = canvas.getContext("2d");
-        const points = Array(15).fill(cfg.baseVal);
-        
-        const interval = setInterval(() => {
-            // Fluctuate value
-            const delta = (Math.random() - 0.5) * (cfg.baseVal > 100 ? 15 : 4);
-            let newVal = Math.round(cfg.baseVal + delta);
-            newVal = Math.max(cfg.baseVal > 100 ? 50 : 5, Math.min(cfg.baseVal > 100 ? 300 : 95, newVal));
-            
-            // Update labels
-            const valEl = document.getElementById(cfg.idVal);
-            if (valEl) valEl.innerText = newVal + cfg.unit;
-            
-            points.push(newVal);
-            points.shift();
-            
-            // Draw sparkline path
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.strokeStyle = cfg.color;
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            
-            const step = canvas.width / (points.length - 1);
-            points.forEach((p, idx) => {
-                const x = idx * step;
-                // normalize range
-                const y = canvas.height - 3 - ((p / (cfg.baseVal > 100 ? 300 : 100)) * (canvas.height - 6));
-                if (idx === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
-            });
-            ctx.stroke();
-        }, 1200);
-        
-        sparklineAnims.push(interval);
+        histories[cfg.id] = Array(15).fill(0);
     });
+    
+    const interval = setInterval(async () => {
+        try {
+            const res = await fetch(`${API_BASE}/v1/system/stats`);
+            if (!res.ok) return;
+            const data = await res.json();
+            
+            configs.forEach(cfg => {
+                const canvas = document.getElementById(cfg.id);
+                if (!canvas) return;
+                
+                const val = data[cfg.key] || 0;
+                
+                const valEl = document.getElementById(cfg.idVal);
+                if (valEl) valEl.innerText = val + cfg.unit;
+                
+                const points = histories[cfg.id];
+                points.push(val);
+                points.shift();
+                
+                const ctx = canvas.getContext("2d");
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.strokeStyle = cfg.color;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                
+                const step = canvas.width / (points.length - 1);
+                points.forEach((p, idx) => {
+                    const x = idx * step;
+                    const y = canvas.height - 3 - ((p / cfg.max) * (canvas.height - 6));
+                    if (idx === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+            });
+        } catch (e) {
+            console.error("Failed to update system metrics:", e);
+        }
+    }, 1500);
+    
+    sparklineAnims.push(interval);
 }
 
 function initSidebarWave() {
