@@ -3,119 +3,299 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JARVIS OS - AI Desktop Operating Layer Dashboard</title>
+    <title>JARVIS OS - Cybernetic AI Dashboard Layer</title>
     <link rel="stylesheet" href="/static/styles.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
 
-    <!-- Header Navbar -->
-    <header class="navbar">
-        <div class="brand">
-            <div class="brand-logo">🤖</div>
-            <div class="brand-title">JARVIS OS</div>
-            <div class="brand-badge">v1.0.0 Enterprise</div>
-        </div>
-        <div class="system-status">
-            <div class="status-indicator">
-                <div class="dot-online"></div>
-                <span id="healthStatus">JARVIS OS Engine Online</span>
+    <div class="app-container">
+        
+        <!-- Left Sidebar -->
+        <aside class="left-sidebar">
+            <div class="sidebar-header">
+                <span class="logo-title">JARVIS OS</span>
+                <span class="logo-badge">v3.0.0 Pro</span>
             </div>
-        </div>
-    </header>
 
-    <!-- Main Dashboard Grid -->
-    <main class="dashboard-container">
-        <!-- Left Main Column -->
-        <section class="main-column">
-            
-            <!-- Command Input Box -->
-            <div class="glass-card">
-                <div class="card-header">
-                    <h2 class="card-title">✨ Direct Command, Vision & AI Intent Execution</h2>
+            <!-- Avatar Profile -->
+            <div class="profile-card">
+                <div class="avatar-container">
+                    <div class="avatar-glow"></div>
+                    <svg class="avatar-svg" viewBox="0 0 100 100">
+                        <circle cx="50" cy="50" r="45" stroke="#00f0ff" stroke-width="1.5" fill="none" stroke-dasharray="3 3"/>
+                        <circle cx="50" cy="50" r="38" stroke="#7000ff" stroke-width="2" fill="none"/>
+                        <!-- Robot Head -->
+                        <rect x="35" y="38" width="30" height="24" rx="6" fill="#0f172a" stroke="#00f0ff" stroke-width="2"/>
+                        <rect x="42" y="62" width="16" height="6" fill="none" stroke="#00f0ff" stroke-width="1.5"/>
+                        <!-- Eyes -->
+                        <circle cx="44" cy="48" r="3" fill="#00f0ff"/>
+                        <circle cx="56" cy="48" r="3" fill="#00f0ff"/>
+                        <!-- Ears/Antennas -->
+                        <line x1="30" y1="50" x2="35" y2="50" stroke="#00f0ff" stroke-width="2"/>
+                        <line x1="65" y1="50" x2="70" y2="50" stroke="#00f0ff" stroke-width="2"/>
+                        <line x1="50" y1="30" x2="50" y2="38" stroke="#7000ff" stroke-width="2"/>
+                        <circle cx="50" cy="28" r="2" fill="#00f0ff"/>
+                    </svg>
                 </div>
-                <div class="command-box">
-                    <input type="text" id="goalInput" class="command-input" placeholder="Type or speak a goal (e.g., 'What am I looking at?', 'Open Chrome', 'Scroll down')..." onkeydown="if(event.key === 'Enter') submitGoal()">
-                    <button class="btn-execute" onclick="submitGoal()">
-                        <span>Execute</span> 🚀
+                <h3 class="profile-name">JARVIS</h3>
+                <p class="profile-tag">Your AI Companion</p>
+            </div>
+
+            <!-- Navigation Links -->
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active">
+                    <span class="nav-icon">💬</span> Chat <span class="active-dot"></span>
+                </a>
+                <a href="#" class="nav-item" onclick="runPreset('search Python tutorial')">
+                    <span class="nav-icon">🔍</span> Search
+                </a>
+                <a href="#" class="nav-item" onclick="runPreset('What is on my screen?')">
+                    <span class="nav-icon">👁️</span> Vision <span class="badge-new">NEW</span>
+                </a>
+                <a href="#" class="nav-item" onclick="runPreset('Open Chrome')">
+                    <span class="nav-icon">🧩</span> Apps
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">⚙️</span> Automation
+                </a>
+                <a href="#" class="nav-item" onclick="runPreset('open file explorer')">
+                    <span class="nav-icon">📁</span> Files
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">🧠</span> Memory
+                </a>
+                <a href="#" class="nav-item" onclick="showSettings()">
+                    <span class="nav-icon">⚙️</span> Settings
+                </a>
+            </nav>
+
+            <!-- Bottom Ultimate Mode Card -->
+            <div class="ultimate-card">
+                <div class="ultimate-header">
+                    <span class="ultimate-title">JARVIS AI</span>
+                    <span class="ultimate-status">Ultimate Mode ●</span>
+                </div>
+                <!-- Wave Visualizer Canvas -->
+                <canvas id="sidebarWave" class="sidebar-wave-canvas" height="30"></canvas>
+            </div>
+
+            <!-- System Status Footer -->
+            <div class="sidebar-footer">
+                <div class="status-indicator">
+                    <div class="dot-online"></div>
+                    <span class="status-text">All Systems Operational</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Center Main Column -->
+        <main class="center-content">
+            <!-- Header status row -->
+            <header class="assistant-header">
+                <div class="header-status">
+                    <span class="status-title">AI ASSISTANT - ONLINE <span class="pulse-dot"></span></span>
+                    <span class="status-desc">Ready to help. Speak or type your command.</span>
+                </div>
+                <div class="header-actions">
+                    <button class="btn-action-outline" onclick="showSettings()">⚙ Settings</button>
+                    <button id="listeningPill" class="listening-pill ready" onclick="triggerVoiceMic()">● READY</button>
+                </div>
+            </header>
+
+            <!-- Chat Panel Area -->
+            <section class="chat-section">
+                <div class="chat-history" id="chatHistory">
+                    <div class="timeline-divider"><span>Today</span></div>
+                    
+                    <!-- Welcome Message -->
+                    <div class="message jarvis">
+                        <div class="msg-avatar">🤖</div>
+                        <div class="msg-content-wrapper">
+                            <div class="msg-header">
+                                <span class="msg-author">JARVIS</span>
+                                <span class="msg-time" id="welcomeTime">10:06 AM</span>
+                            </div>
+                            <div class="msg-body">
+                                <p>Hello! Good morning! I'm JARVIS.</p>
+                                <p>Just speak — tell me what to do. I can help you with:</p>
+                                <ul class="features-list">
+                                    <li><span>✔</span> Open apps & websites</li>
+                                    <li><span>✔</span> Take photos & videos</li>
+                                    <li><span>✔</span> Search anything on the web</li>
+                                    <li><span>✔</span> Manage files & folders</li>
+                                    <li><span>✔</span> Answer questions</li>
+                                    <li>And much more...</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Input and Visualizer Section -->
+            <footer class="input-section">
+                <!-- Capsule Command Bar -->
+                <div class="command-capsule">
+                    <button class="btn-capsule-mic" onclick="triggerVoiceMic()">🎤</button>
+                    <input type="text" id="goalInput" class="capsule-input" placeholder="Speak your command or type here..." onkeydown="if(event.key === 'Enter') submitGoal()">
+                    <div class="capsule-wave-container">
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                    </div>
+                    <button class="btn-capsule-send" onclick="submitGoal()">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
                     </button>
                 </div>
 
-                <!-- Presets Quick Action Bar -->
-                <div class="presets-grid">
-                    <div class="preset-card" onclick="runPreset('What am I looking at?')">
-                        <div class="preset-title">👁️ Screen Vision</div>
-                        <div class="preset-desc">Analyze active monitor & visual content</div>
+                <!-- Siri Voice Orb visualizer -->
+                <div class="siri-orb-container">
+                    <div class="siri-orb-waves">
+                        <div class="orb-wave wave1"></div>
+                        <div class="orb-wave wave2"></div>
                     </div>
-                    <div class="preset-card" onclick="runPreset('Scroll down twice')">
-                        <div class="preset-title">📜 Scroll Down</div>
-                        <div class="preset-desc">Direct Win32 browser page scroll</div>
-                    </div>
-                    <div class="preset-card" onclick="runPreset('Open Chrome, search AKTU results, and download marksheet')">
-                        <div class="preset-title">🌐 TEST-01: AKTU Search</div>
-                        <div class="preset-desc">Browser navigation & PDF download</div>
-                    </div>
-                    <div class="preset-card" onclick="runPreset('Create file test.txt in Downloads and scan for duplicates')">
-                        <div class="preset-title">📁 TEST-02: File & Duplicates</div>
-                        <div class="preset-desc">File creation & SHA-256 scan</div>
-                    </div>
-                    <div class="preset-card" onclick="runPreset('Delete all files in Downloads folder')">
-                        <div class="preset-title">⚠️ TEST-03: Mass Deletion</div>
-                        <div class="preset-desc">Triggers human confirmation gate</div>
-                    </div>
-                    <div class="preset-card" onclick="runPreset('Refactor main.py and run pytest suite')">
-                        <div class="preset-title">💻 TEST-04: AI Pair Coding</div>
-                        <div class="preset-desc">Code editing & pytest runner</div>
-                    </div>
-                    <div class="preset-card" onclick="runPreset('Open Notepad and Calculator side by side')">
-                        <div class="preset-title">🪟 TEST-05: Desktop Split</div>
-                        <div class="preset-desc">Multi-app launch & window snapping</div>
-                    </div>
-                    <div class="preset-card" onclick="runPreset('Summarize inbox and prepare daily email brief')">
-                        <div class="preset-title">📧 Email Brief</div>
-                        <div class="preset-desc">Inbox triage & draft response</div>
+                    <div class="voice-orb" onclick="triggerVoiceMic()">
+                        <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                            <path d="M19 10v1a7 7 0 0 1-14 0v-1"></path>
+                            <line x1="12" y1="19" x2="12" y2="22"></line>
+                        </svg>
                     </div>
                 </div>
-            </div>
 
-            <!-- Active DAG Execution Flow -->
-            <div class="glass-card">
-                <div class="card-header">
-                    <h2 class="card-title">🧠 Multi-Agent DAG Execution Plan</h2>
-                </div>
-                <div id="dagContainer" class="dag-container">
-                    <div class="step-meta">No active execution plan. Enter an instruction above to generate a DAG plan.</div>
-                </div>
-            </div>
-
-        </section>
+                <div class="orb-tip">💡 Tip: You can say <span class="highlight">"Hey Jarvis"</span> to activate me.</div>
+            </footer>
+        </main>
 
         <!-- Right Side Panel -->
-        <section class="side-column">
-            
-            <!-- Active Domain Agents Grid -->
-            <div class="glass-card">
-                <div class="card-header">
-                    <h2 class="card-title">🤖 Active Domain Agents (20)</h2>
+        <aside class="right-panel">
+            <!-- System Overview Grid -->
+            <div class="panel-section">
+                <div class="section-header">
+                    <span class="section-title">SYSTEM OVERVIEW</span>
                 </div>
-                <div id="agentsGrid" class="agents-grid">
-                    <!-- Loaded dynamically -->
+                <div class="stats-container">
+                    <!-- CPU Usage -->
+                    <div class="stat-row">
+                        <div class="stat-meta">
+                            <span class="stat-label">CPU Usage</span>
+                            <span class="stat-value" id="cpuValue">23%</span>
+                        </div>
+                        <div class="sparkline-wrapper">
+                            <canvas id="cpuSparkline" class="sparkline-canvas" width="120" height="20"></canvas>
+                        </div>
+                    </div>
+                    <!-- Memory Usage -->
+                    <div class="stat-row">
+                        <div class="stat-meta">
+                            <span class="stat-label">Memory</span>
+                            <span class="stat-value" id="memValue">42%</span>
+                        </div>
+                        <div class="sparkline-wrapper">
+                            <canvas id="memSparkline" class="sparkline-canvas" width="120" height="20"></canvas>
+                        </div>
+                    </div>
+                    <!-- Storage -->
+                    <div class="stat-row">
+                        <div class="stat-meta">
+                            <span class="stat-label">Storage</span>
+                            <span class="stat-value" id="diskValue">68%</span>
+                        </div>
+                        <div class="sparkline-wrapper">
+                            <canvas id="diskSparkline" class="sparkline-canvas" width="120" height="20"></canvas>
+                        </div>
+                    </div>
+                    <!-- Network -->
+                    <div class="stat-row">
+                        <div class="stat-meta">
+                            <span class="stat-label">Network</span>
+                            <span class="stat-value" id="netValue">156 Mbps</span>
+                        </div>
+                        <div class="sparkline-wrapper">
+                            <canvas id="netSparkline" class="sparkline-canvas" width="120" height="20"></canvas>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Terminal Log Stream -->
-            <div class="glass-card">
-                <div class="card-header">
-                    <h2 class="card-title">⚡ Telemetry & Audit Logs</h2>
+            <!-- Quick Actions Grid -->
+            <div class="panel-section">
+                <div class="section-header">
+                    <span class="section-title">QUICK ACTIONS</span>
                 </div>
-                <div id="logTerminal" class="log-terminal">
-                    <div class="log-entry info">[SYSTEM] JARVIS OS Web Dashboard Initialized.</div>
-                    <div class="log-entry info">[SYSTEM] Connected to local microservice API at http://localhost:8000.</div>
+                <div class="quick-actions-grid">
+                    <button class="action-card" onclick="runPreset('take a screenshot')">
+                        <span class="action-card-icon">📸</span>
+                        <span class="action-card-label">Screenshot</span>
+                    </button>
+                    <button class="action-card" onclick="runPreset('open chrome')">
+                        <span class="action-card-icon">🌐</span>
+                        <span class="action-card-label">Open Browser</span>
+                    </button>
+                    <button class="action-card" onclick="runPreset('open camera, take photo')">
+                        <span class="action-card-icon">📷</span>
+                        <span class="action-card-label">Take Photo</span>
+                    </button>
+                    <button class="action-card" onclick="triggerVoiceMic()">
+                        <span class="action-card-icon">🎙️</span>
+                        <span class="action-card-label">Voice Note</span>
+                    </button>
+                    <button class="action-card" onclick="runPreset('open calculator')">
+                        <span class="action-card-icon">🔢</span>
+                        <span class="action-card-label">Calculator</span>
+                    </button>
+                    <button class="action-card" onclick="runPreset('open notepad')">
+                        <span class="action-card-icon">📝</span>
+                        <span class="action-card-label">Notepad</span>
+                    </button>
                 </div>
             </div>
 
-        </section>
-    </main>
+            <!-- Recent Activities -->
+            <div class="panel-section">
+                <div class="section-header">
+                    <span class="section-title">RECENT ACTIVITIES</span>
+                    <a href="#" class="section-header-link">See all</a>
+                </div>
+                <div class="activity-list" id="activityList">
+                    <div class="activity-item">
+                        <div class="activity-icon">💻</div>
+                        <div class="activity-details">
+                            <div class="activity-title">Opened Visual Studio Code</div>
+                            <div class="activity-time">2 min ago</div>
+                        </div>
+                    </div>
+                    <div class="activity-item">
+                        <div class="activity-icon">🔍</div>
+                        <div class="activity-details">
+                            <div class="activity-title">Searched "Python tutorial"</div>
+                            <div class="activity-time">15 min ago</div>
+                        </div>
+                    </div>
+                    <div class="activity-item">
+                        <div class="activity-icon">📄</div>
+                        <div class="activity-details">
+                            <div class="activity-title">Created document.txt</div>
+                            <div class="activity-time">1 hour ago</div>
+                        </div>
+                    </div>
+                    <div class="activity-item">
+                        <div class="activity-icon">🔔</div>
+                        <div class="activity-details">
+                            <div class="activity-title">Set reminder for 5 PM</div>
+                            <div class="activity-time">2 hours ago</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+    </div>
 
     <!-- Human Confirmation Modal -->
     <div id="approvalModal" class="modal-overlay">

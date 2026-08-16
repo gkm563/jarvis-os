@@ -73,3 +73,26 @@ async def get_plan_status(plan_id: str):
         steps=[],
         status=PlanStatus.COMPLETED,
     )
+
+
+@router.post("/trigger_mic")
+async def trigger_mic(background_tasks: BackgroundTasks):
+    """Triggers the local voice assistant mic listening and execution loop."""
+    logger.info("Triggering local mic listening via Web UI request...")
+    
+    def listen_and_run():
+        import asyncio
+        from voice_engine import listen_best
+        from jarvis.config.settings import settings
+        
+        api_key = settings.GROQ_API_KEY
+        text, err = listen_best(api_key, timeout_sec=10)
+        if text:
+            logger.info(f"Local voice command received: '{text}'")
+            async def process():
+                plan = await planner.create_plan(text)
+                await executor.execute_plan(plan)
+            asyncio.run(process())
+            
+    background_tasks.add_task(listen_and_run)
+    return {"status": "triggered"}
