@@ -19,6 +19,9 @@ document.addEventListener("DOMContentLoaded", () => {
     
     // Poll for pending confirmation approvals (sensitive action gate)
     setInterval(fetchPendingApprovals, 2000);
+    
+    // Connect telemetry WebSocket
+    connectWebSocket();
 });
 
 function updateTimestamps() {
@@ -386,4 +389,80 @@ function initSidebarWave() {
         sidebarWaveAnim = requestAnimationFrame(draw);
     }
     draw();
+}
+
+let ws = null;
+
+function connectWebSocket() {
+    const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${wsProto}//${window.location.host}/v1/ws`;
+    
+    ws = new WebSocket(wsUrl);
+    
+    ws.onopen = () => {
+        console.log("WebSocket connected to JARVIS OS telemetry");
+    };
+    
+    ws.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            handleWebSocketMessage(data);
+        } catch (e) {
+            console.error("Failed to parse WS payload:", e);
+        }
+    };
+    
+    ws.onclose = () => {
+        console.log("WebSocket disconnected. Retrying in 3 seconds...");
+        setTimeout(connectWebSocket, 3000);
+    };
+}
+
+function handleWebSocketMessage(payload) {
+    if (payload.type === "message") {
+        addMessage(payload.author, payload.text, payload.is_user || false);
+    } else if (payload.type === "status") {
+        updateVisualStatus(payload.state);
+    } else if (payload.type === "step_update") {
+        const stepEl = document.getElementById(`step-${payload.step_id}`);
+        if (stepEl) {
+            const statusClass = payload.status.toLowerCase();
+            stepEl.className = `msg-step-item ${statusClass}`;
+            const badge = stepEl.querySelector(".step-badge");
+            if (badge) badge.innerText = payload.status;
+        }
+    }
+}
+
+function updateVisualStatus(state) {
+    const pill = document.getElementById("listeningPill");
+    const statusTextEl = document.querySelector(".status-title");
+    
+    if (!pill) return;
+    
+    pill.className = "listening-pill";
+    
+    if (state === "listening") {
+        pill.classList.add("listening");
+        pill.innerText = "● LISTENING";
+        if (statusTextEl) statusTextEl.innerHTML = 'AI ASSISTANT - LISTENING <span class="pulse-dot" style="background:#ef4444;box-shadow:0 0 6px #ef4444;"></span>';
+        document.querySelectorAll(".orb-wave").forEach(w => w.style.animationDuration = "1s");
+    } else if (state === "thinking") {
+        pill.classList.add("ready");
+        pill.innerText = "● THINKING";
+        if (statusTextEl) statusTextEl.innerHTML = 'AI ASSISTANT - THINKING <span class="pulse-dot" style="background:#f59e0b;box-shadow:0 0 6px #f59e0b;"></span>';
+        document.querySelectorAll(".orb-wave").forEach(w => w.style.animationDuration = "2s");
+    } else if (state === "speaking") {
+        pill.classList.add("ready");
+        pill.innerText = "● SPEAKING";
+        if (statusTextEl) statusTextEl.innerHTML = 'AI ASSISTANT - SPEAKING <span class="pulse-dot" style="background:#00f0ff;box-shadow:0 0 6px #00f0ff;"></span>';
+        document.querySelectorAll(".orb-wave").forEach(w => w.style.animationDuration = "1.2s");
+    } else {
+        pill.classList.add("ready");
+        pill.innerText = "● READY";
+        if (statusTextEl) statusTextEl.innerHTML = 'AI ASSISTANT - ONLINE <span class="pulse-dot"></span>';
+        document.querySelectorAll(".orb-wave").forEach((w, idx) => {
+            w.style.animationDuration = idx === 0 ? "2.5s" : "1.25s";
+        });
+    }
 }
